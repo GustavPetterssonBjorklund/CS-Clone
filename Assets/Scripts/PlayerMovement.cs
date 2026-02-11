@@ -36,6 +36,7 @@ public class PlayerMovement : MonoBehaviour
             // jump: spacebar
             if (controller.isGrounded && Keyboard.current.spaceKey.wasPressedThisFrame)
             {
+                Debug.Log("PlayerMovement: Jump initiated");
                 velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
             }
         }
