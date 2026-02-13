@@ -41,6 +41,13 @@ public class Gun : MonoBehaviour
 
     void Start()
     {
+        if (Application.isBatchMode)
+        {
+            // Dedicated server has no rendering/shaders.
+            enabled = false;
+            return;
+        }
+
         if (fpsCam == null)
             fpsCam = GetComponentInParent<Camera>();
 
@@ -59,6 +66,14 @@ public class Gun : MonoBehaviour
             else
             {
                 var shader = Shader.Find("Sprites/Default");
+                if (shader == null)
+                {
+                    Debug.LogWarning("Gun: Shader 'Sprites/Default' not found. Disabling tracer visuals.");
+                    Destroy(go);
+                    lineRenderer = null;
+                    return;
+                }
+
                 lineRenderer.material = new Material(shader);
                 lineRenderer.material.color = Color.red;
             }

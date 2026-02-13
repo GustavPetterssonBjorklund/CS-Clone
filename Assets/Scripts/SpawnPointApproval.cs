@@ -6,6 +6,7 @@ public class SpawnPointApproval : MonoBehaviour
     [SerializeField, Min(0.05f)] private float spawnHeightOffset = 1.1f;
     [SerializeField, Min(1f)] private float groundProbeDistance = 200f;
     [SerializeField] private LayerMask groundMask = ~0;
+    [SerializeField] private bool logSpawnDecisions = true;
 
     private int nextIndex;
     private NetworkManager nm;
@@ -26,11 +27,21 @@ response)
         response.Approved = true;
         response.CreatePlayerObject = true;
         response.PlayerPrefabHash = null;
-        response.Position = sp != null
+        Vector3? resolvedPosition = sp != null
             ? ResolveSpawnPosition(sp.position)
             : (Vector3?)null;
+        response.Position = resolvedPosition;
         response.Rotation = sp != null ? sp.rotation : (Quaternion?)null;
         response.Pending = false;
+
+        if (logSpawnDecisions)
+        {
+            Debug.Log(
+                $"SpawnPointApproval: client={request.ClientNetworkId} " +
+                $"spawn={(sp != null ? sp.name : "<none>")} " +
+                $"requested={(sp != null ? sp.position.ToString() : "<null>")} " +
+                $"resolved={(resolvedPosition.HasValue ? resolvedPosition.Value.ToString() : "<null>")}");
+        }
     }
 
     private Vector3 ResolveSpawnPosition(Vector3 requestedPosition)

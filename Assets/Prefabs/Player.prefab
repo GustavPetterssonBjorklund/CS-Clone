@@ -160,6 +160,13 @@ MonoBehaviour:
   speed: 6
   gravity: -9.81
   jumpHeight: 1.5
+  initialGroundSnapDuration: 5
+  groundSnapProbeDistance: 300
+  groundSnapOffset: 1.1
+  groundMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  logGroundSnap: 1
 --- !u!114 &7431801480700175631
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -172,7 +179,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c2c8f4522f3b1c94eaf40567de748e4c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MouseLook
-  mouseSensitivity: 200
+  mouseSensitivity: 30
   cameraTransform: {fileID: 7459626087999199429}
 --- !u!114 &3326065646680117410
 MonoBehaviour:
@@ -216,7 +223,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
-  GlobalObjectIdHash: 0
+  GlobalObjectIdHash: 4081164527
   InScenePlacedSourceGlobalObjectIdHash: 0
   DeferredDespawnTick: 0
   Ownership: 1
