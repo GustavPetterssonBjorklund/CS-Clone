@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using Unity.Netcode;
 
 [RequireComponent(typeof(CharacterController))]
 public class PlayerMovement : MonoBehaviour
@@ -10,14 +11,47 @@ public class PlayerMovement : MonoBehaviour
 
     private CharacterController controller;
     private Vector3 velocity;
+    private Gun gun;
+    private NetworkObject networkObject;
 
     void Awake()
     {
         controller = GetComponent<CharacterController>();
+        gun = GetComponentInChildren<Gun>(true);
+        networkObject = GetComponent<NetworkObject>();
+    }
+
+    public void OnAttack(InputValue value)
+    {
+        if (!CanProcessLocalInput()) return;
+        if (value == null || !value.isPressed) return;
+        FireCurrentGun();
+    }
+
+    public void OnAttack()
+    {
+        if (!CanProcessLocalInput()) return;
+        FireCurrentGun();
+    }
+
+    private void FireCurrentGun()
+    {
+        if (gun == null)
+            gun = GetComponentInChildren<Gun>(true);
+
+        if (gun == null)
+        {
+            Debug.LogWarning("PlayerMovement: Attack received but no Gun component was found in children.");
+            return;
+        }
+
+        gun.TriggerAttack();
     }
 
     void Update()
     {
+        if (!CanProcessLocalInput()) return;
+
         // New Input System: WASD/Arrows
         Vector2 input = Vector2.zero;
         if (Keyboard.current != null)
@@ -50,5 +84,12 @@ public class PlayerMovement : MonoBehaviour
 
         velocity.y += gravity * Time.deltaTime;
         controller.Move(velocity * Time.deltaTime);
+    }
+
+    private bool CanProcessLocalInput()
+    {
+        if (networkObject == null) return true;
+        if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsListening) return true;
+        return networkObject.IsOwner;
     }
 }
