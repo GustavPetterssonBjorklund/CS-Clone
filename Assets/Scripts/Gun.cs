@@ -1,5 +1,6 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.Rendering;
 
 public class Gun : MonoBehaviour
 {
@@ -41,7 +42,7 @@ public class Gun : MonoBehaviour
 
     void Start()
     {
-        if (Application.isBatchMode)
+        if (IsHeadlessRuntime())
         {
             // Dedicated server has no rendering/shaders.
             enabled = false;
@@ -50,6 +51,8 @@ public class Gun : MonoBehaviour
 
         if (fpsCam == null)
             fpsCam = GetComponentInParent<Camera>();
+        if (fpsCam == null)
+            fpsCam = Camera.main;
 
         // Ensure there's a LineRenderer to use. If one isn't assigned, create a child object.
         if (lineRenderer == null)
@@ -114,16 +117,17 @@ public class Gun : MonoBehaviour
 
         if (fpsCam == null)
         {
-            Debug.LogWarning("Gun: fpsCam is null - cannot perform raycast");
-            return;
+            Debug.LogWarning("Gun: fpsCam is null - using gun transform for debug raycast");
         }
 
         // Debug raycast for better visibility in logs
-        Debug.DrawRay(fpsCam.transform.position, fpsCam.transform.forward * range, Color.red, 1f);
+        Vector3 rayOrigin = fpsCam != null ? fpsCam.transform.position : transform.position;
+        Vector3 rayDirection = fpsCam != null ? fpsCam.transform.forward : transform.forward;
+        Debug.DrawRay(rayOrigin, rayDirection * range, Color.red, 1f);
 
         // Set up the LineRenderer positions and timer so the line is visible in Game view
-        _lineStart = fpsCam.transform.position;
-        _lineEnd = fpsCam.transform.position + fpsCam.transform.forward * range;
+        _lineStart = rayOrigin;
+        _lineEnd = rayOrigin + rayDirection * range;
         _lineEndTime = Time.time + lineDuration;
 
         if (lineRenderer != null)
@@ -133,7 +137,7 @@ public class Gun : MonoBehaviour
             lineRenderer.enabled = true;
         }
 
-        if (Physics.Raycast(fpsCam.transform.position, fpsCam.transform.forward, out RaycastHit hit, range))
+        if (Physics.Raycast(rayOrigin, rayDirection, out RaycastHit hit, range))
         {
             Debug.Log($"Gun: Hit '{hit.transform.name}' at {hit.point} (distance {hit.distance:F2})");
 
@@ -158,4 +162,13 @@ public class Gun : MonoBehaviour
         }
         
     }
+    private static bool IsHeadlessRuntime()
+    {
+#if UNITY_SERVER
+        return true;
+#else
+        return Application.isBatchMode || SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null;
+#endif
+    }
 }
+

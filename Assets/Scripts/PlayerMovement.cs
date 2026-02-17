@@ -3,12 +3,12 @@ using UnityEngine.InputSystem;
 using Unity.Netcode;
 
 [RequireComponent(typeof(CharacterController))]
-public class PlayerMovement : MonoBehaviour
+public class PlayerMovement : NetworkBehaviour
 {
     public float speed = 6f;
     public float gravity = -9.81f;
     public float jumpHeight = 1.5f; // added jump height
-    public float initialGroundSnapDuration = 5f;
+    public float initialGroundSnapDuration = 0.1f;
     public float groundSnapProbeDistance = 300f;
     public float groundSnapOffset = 1.1f;
     public LayerMask groundMask = ~0;
@@ -17,17 +17,33 @@ public class PlayerMovement : MonoBehaviour
     private CharacterController controller;
     private Vector3 velocity;
     private Gun gun;
-    private NetworkObject networkObject;
     private float spawnTime;
     private bool groundSnapComplete;
     private bool groundSnapTimedOutLogged;
+    private const float RemoteLerpSpeed = 18f;
+    private readonly NetworkVariable<Vector3> syncedPosition = new(
+        default,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Owner);
+    private readonly NetworkVariable<Quaternion> syncedRotation = new(
+        Quaternion.identity,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Owner);
 
     void Awake()
     {
         controller = GetComponent<CharacterController>();
         gun = GetComponentInChildren<Gun>(true);
-        networkObject = GetComponent<NetworkObject>();
         spawnTime = Time.time;
+    }
+
+    public override void OnNetworkSpawn()
+    {
+        if (IsOwner)
+        {
+            syncedPosition.Value = transform.position;
+            syncedRotation.Value = transform.rotation;
+        }
     }
 
     public void OnAttack(InputValue value)
@@ -59,6 +75,12 @@ public class PlayerMovement : MonoBehaviour
 
     void Update()
     {
+        if (IsSpawned && !IsOwner)
+        {
+            ApplyRemoteState();
+            return;
+        }
+
         if (!CanProcessLocalInput()) return;
 
         TryGroundSnapDuringSpawnWindow();
@@ -95,13 +117,18 @@ public class PlayerMovement : MonoBehaviour
 
         velocity.y += gravity * Time.deltaTime;
         controller.Move(velocity * Time.deltaTime);
+
+        if (IsSpawned && IsOwner)
+        {
+            syncedPosition.Value = transform.position;
+            syncedRotation.Value = transform.rotation;
+        }
     }
 
     private bool CanProcessLocalInput()
     {
-        if (networkObject == null) return true;
-        if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsListening) return true;
-        return networkObject.IsOwner;
+        if (!IsSpawned) return true;
+        return IsOwner;
     }
 
     private void TryGroundSnapDuringSpawnWindow()
@@ -119,7 +146,7 @@ public class PlayerMovement : MonoBehaviour
             if (logGroundSnap && !groundSnapTimedOutLogged)
             {
                 Debug.LogWarning(
-                    $"PlayerMovement: ground snap timed out for owner={networkObject != null && networkObject.IsOwner}. " +
+                    $"PlayerMovement: ground snap timed out for owner={IsOwner}. " +
                     $"position={transform.position}");
                 groundSnapTimedOutLogged = true;
             }
@@ -138,6 +165,7 @@ public class PlayerMovement : MonoBehaviour
         transform.position = hit.point + Vector3.up * Mathf.Max(0.05f, groundSnapOffset);
         if (controllerWasEnabled) controller.enabled = true;
         velocity.y = 0f;
+        groundSnapComplete = true;
 
         if (logGroundSnap)
         {
@@ -186,5 +214,20 @@ public class PlayerMovement : MonoBehaviour
         }
 
         return col.GetComponent<CharacterController>() != null;
+    }
+
+    private void ApplyRemoteState()
+    {
+        if (!controller.enabled)
+        {
+            transform.position = Vector3.Lerp(transform.position, syncedPosition.Value, Time.deltaTime * RemoteLerpSpeed);
+            transform.rotation = Quaternion.Slerp(transform.rotation, syncedRotation.Value, Time.deltaTime * RemoteLerpSpeed);
+            return;
+        }
+
+        controller.enabled = false;
+        transform.position = Vector3.Lerp(transform.position, syncedPosition.Value, Time.deltaTime * RemoteLerpSpeed);
+        transform.rotation = Quaternion.Slerp(transform.rotation, syncedRotation.Value, Time.deltaTime * RemoteLerpSpeed);
+        controller.enabled = true;
     }
 }

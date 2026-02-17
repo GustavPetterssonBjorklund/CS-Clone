@@ -1,0 +1,8 @@
+<ui:UXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" noNamespaceSchemaLocation="../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
+    <Style src="project://database/Assets/UI/MainMenu/Main.uss?fileID=7433441132597879392&amp;guid=f28addadc6dd6db4da16f267d1a37ebc&amp;type=3#Main"/>
+    <ui:VisualElement name="Container" class="container" style="flex-grow: 1;">
+        <ui:VisualElement name="TopContainer" class="top-container">
+            <ui:Button text="Play" name="playButton" class="play-button" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

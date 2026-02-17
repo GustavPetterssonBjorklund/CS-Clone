@@ -1,0 +1,55 @@
+:root {
+    --menu-bg: rgba(0, 0, 0, 0.45);
+    --menu-border: rgba(255, 255, 255, 0.12);
+    --text-main: rgb(240, 240, 240);
+    --text-subtle: rgba(240, 240, 240, 0.72);
+    --btn-bg: rgba(255, 255, 255, 0.10);
+    --btn-bg-hover: rgba(255, 255, 255, 0.16);
+    --btn-bg-pressed: rgba(255, 255, 255, 0.06);
+}
+
+.container {
+    flex-grow: 1;
+    justify-content: flex-start;
+    align-items: center;
+}
+
+.top-container {
+    width: 100%;
+    margin-top: 12px;
+    background-color: var(--menu-bg);
+    border-top-color: var(--menu-border);
+    border-right-color: var(--menu-border);
+    border-bottom-color: var(--menu-border);
+    border-left-color: var(--menu-border);
+    justify-content: center;
+    align-items: center;
+}
+
+.play-button {
+    margin-top: 5px;
+    margin-bottom: 5px;
+    width: 150px;
+    height: 30px;
+    font-size: 18px;
+    -unity-font-style: bold;
+    color: var(--text-main);
+    background-color: var(--btn-bg);
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: var(--menu-border);
+    border-right-color: var(--menu-border);
+    border-bottom-color: var(--menu-border);
+    border-left-color: var(--menu-border);
+    -unity-text-align: middle-center;
+}
+
+.play-button:hover {
+    background-color: var(--btn-bg-hover);
+}
+
+.play-button:active {
+    background-color: var(--btn-bg-pressed);
+}
