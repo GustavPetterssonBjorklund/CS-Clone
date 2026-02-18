@@ -18,8 +18,12 @@ MonoBehaviour:
   m_PlatformId: 91d938b35f6f4798811e41f2acf9377f
   m_PlatformBuildProfile:
     rid: 5429583297115324610
-  m_OverrideGlobalSceneList: 0
-  m_Scenes: []
+  m_OverrideGlobalSceneList: 1
+  m_Scenes:
+  - m_enabled: 0
+    m_path: Assets/Scenes/Lobby.unity
+  - m_enabled: 1
+    m_path: Assets/Scenes/NatureWorld.unity
   m_HasScriptingDefines: 0
   m_ScriptingDefines: []
   m_PlayerSettingsYaml:
@@ -45,7 +49,7 @@ MonoBehaviour:
           m_BuildProfileEngineDiagnosticsState: 2
         m_AdaptivePerformanceEnabled: 0
         m_Architecture: 0
-        m_RemoteDeviceSectionFoldoutOpen: 0
+        m_RemoteDeviceSectionFoldoutOpen: 1
         m_DeployTarget: 1
         m_RemoteDeviceAddress: unity-ct
         m_RemoteDeviceUsername: root

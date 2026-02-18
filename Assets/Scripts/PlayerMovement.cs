@@ -13,10 +13,13 @@ public class PlayerMovement : NetworkBehaviour
     public float groundSnapOffset = 1.1f;
     public LayerMask groundMask = ~0;
     public bool logGroundSnap = true;
+    public bool forceAlwaysAnimate = true;
 
     private CharacterController controller;
+    private Animator characterAnimator;
     private Vector3 velocity;
     private Gun gun;
+    private float displayedMoveSpeed;
     private float spawnTime;
     private bool groundSnapComplete;
     private bool groundSnapTimedOutLogged;
@@ -29,12 +32,29 @@ public class PlayerMovement : NetworkBehaviour
         Quaternion.identity,
         NetworkVariableReadPermission.Everyone,
         NetworkVariableWritePermission.Owner);
+    private readonly NetworkVariable<float> syncedMoveSpeed = new(
+        0f,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Owner);
+    private readonly NetworkVariable<bool> syncedGrounded = new(
+        true,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Owner);
 
     void Awake()
     {
         controller = GetComponent<CharacterController>();
+        characterAnimator = GetComponentInChildren<Animator>(true);
         gun = GetComponentInChildren<Gun>(true);
         spawnTime = Time.time;
+        if (characterAnimator != null)
+        {
+            characterAnimator.applyRootMotion = false;
+            if (forceAlwaysAnimate)
+            {
+                characterAnimator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            }
+        }
     }
 
     public override void OnNetworkSpawn()
@@ -43,6 +63,8 @@ public class PlayerMovement : NetworkBehaviour
         {
             syncedPosition.Value = transform.position;
             syncedRotation.Value = transform.rotation;
+            syncedMoveSpeed.Value = 0f;
+            syncedGrounded.Value = controller != null && controller.isGrounded;
         }
     }
 
@@ -109,6 +131,7 @@ public class PlayerMovement : NetworkBehaviour
         }
 
         Vector3 move = transform.right * input.x + transform.forward * input.y;
+        float normalizedMoveSpeed = Mathf.Clamp01(input.magnitude);
         controller.Move(move * speed * Time.deltaTime);
 
         // gravity
@@ -122,7 +145,11 @@ public class PlayerMovement : NetworkBehaviour
         {
             syncedPosition.Value = transform.position;
             syncedRotation.Value = transform.rotation;
+            syncedMoveSpeed.Value = normalizedMoveSpeed;
+            syncedGrounded.Value = controller.isGrounded;
         }
+
+        UpdateAnimator(normalizedMoveSpeed, controller.isGrounded);
     }
 
     private bool CanProcessLocalInput()
@@ -229,5 +256,50 @@ public class PlayerMovement : NetworkBehaviour
         transform.position = Vector3.Lerp(transform.position, syncedPosition.Value, Time.deltaTime * RemoteLerpSpeed);
         transform.rotation = Quaternion.Slerp(transform.rotation, syncedRotation.Value, Time.deltaTime * RemoteLerpSpeed);
         controller.enabled = true;
+
+        float smoothedSpeed = Mathf.Lerp(displayedMoveSpeed, syncedMoveSpeed.Value, Time.deltaTime * RemoteLerpSpeed);
+        displayedMoveSpeed = smoothedSpeed;
+        UpdateAnimator(smoothedSpeed, syncedGrounded.Value);
+    }
+
+    private void UpdateAnimator(float moveSpeed, bool grounded)
+    {
+        if (characterAnimator == null) return;
+
+        // Supports common animator param names used in imported controllers.
+        SetAnimatorFloatIfExists("speed", moveSpeed);
+        SetAnimatorFloatIfExists("Speed", moveSpeed);
+        SetAnimatorFloatIfExists("MoveSpeed", moveSpeed);
+        SetAnimatorFloatIfExists("Velocity", moveSpeed);
+
+        SetAnimatorBoolIfExists("Grounded", grounded);
+        SetAnimatorBoolIfExists("IsGrounded", grounded);
+    }
+
+    private void SetAnimatorFloatIfExists(string name, float value)
+    {
+        int hash = Animator.StringToHash(name);
+        if (!HasAnimatorParameter(hash, AnimatorControllerParameterType.Float)) return;
+        characterAnimator.SetFloat(hash, value);
+    }
+
+    private void SetAnimatorBoolIfExists(string name, bool value)
+    {
+        int hash = Animator.StringToHash(name);
+        if (!HasAnimatorParameter(hash, AnimatorControllerParameterType.Bool)) return;
+        characterAnimator.SetBool(hash, value);
+    }
+
+    private bool HasAnimatorParameter(int hash, AnimatorControllerParameterType type)
+    {
+        if (characterAnimator == null) return false;
+        var parameters = characterAnimator.parameters;
+        for (int i = 0; i < parameters.Length; i++)
+        {
+            var p = parameters[i];
+            if (p.nameHash == hash && p.type == type) return true;
+        }
+
+        return false;
     }
 }

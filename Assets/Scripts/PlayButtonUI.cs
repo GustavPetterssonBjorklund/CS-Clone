@@ -27,6 +27,12 @@ public class PlayButtonUI : MonoBehaviour
 
     private void Start()
     {
+        if (Application.isBatchMode)
+        {
+            enabled = false;
+            return;
+        }
+
         if (uiDocument == null)
         {
             Debug.LogWarning("PlayButtonUI: UIDocument not assigned");
