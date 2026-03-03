@@ -20,10 +20,10 @@ MonoBehaviour:
     rid: 5429583297115324610
   m_OverrideGlobalSceneList: 1
   m_Scenes:
-  - m_enabled: 0
-    m_path: Assets/Scenes/Lobby.unity
   - m_enabled: 1
-    m_path: Assets/Scenes/NatureWorld.unity
+    m_path: Assets/Game/Scenes/NatureWorld.unity
+  - m_enabled: 0
+    m_path: Assets/Game/Scenes/Lobby.unity
   m_HasScriptingDefines: 0
   m_ScriptingDefines: []
   m_PlayerSettingsYaml:

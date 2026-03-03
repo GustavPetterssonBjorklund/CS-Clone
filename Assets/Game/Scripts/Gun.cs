@@ -4,6 +4,10 @@ using UnityEngine.Rendering;
 
 public class Gun : MonoBehaviour
 {
+    [Header("Definition")]
+    public WeaponDefinition definition;
+    public bool applyDefinitionOnStart = true;
+
     [Header("Gun Settings")]
     public float damage = 25f;
     public float range = 100f;
@@ -29,6 +33,12 @@ public class Gun : MonoBehaviour
 
     public void TriggerAttack()
     {
+        if (fireRate > 0f)
+        {
+            if (Time.time < nextTimeToFire) return;
+            nextTimeToFire = Time.time + (1f / fireRate);
+        }
+
         Shoot();
     }
 
@@ -53,6 +63,11 @@ public class Gun : MonoBehaviour
             fpsCam = GetComponentInParent<Camera>();
         if (fpsCam == null)
             fpsCam = Camera.main;
+
+        if (applyDefinitionOnStart)
+        {
+            ApplyDefinition(definition);
+        }
 
         // Ensure there's a LineRenderer to use. If one isn't assigned, create a child object.
         if (lineRenderer == null)
@@ -162,6 +177,17 @@ public class Gun : MonoBehaviour
         }
         
     }
+
+    public void ApplyDefinition(WeaponDefinition weaponDefinition)
+    {
+        definition = weaponDefinition;
+        if (definition == null) return;
+
+        damage = definition.damage;
+        range = definition.range;
+        fireRate = definition.fireRate;
+    }
+
     private static bool IsHeadlessRuntime()
     {
 #if UNITY_SERVER

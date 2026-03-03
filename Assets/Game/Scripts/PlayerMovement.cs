@@ -17,12 +17,15 @@ public class PlayerMovement : NetworkBehaviour
 
     private CharacterController controller;
     private Animator characterAnimator;
+    private PlayerInput playerInput;
     private Vector3 velocity;
-    private Gun gun;
+    private Gun legacyGun;
+    private WeaponManager weaponManager;
     private float displayedMoveSpeed;
     private float spawnTime;
     private bool groundSnapComplete;
     private bool groundSnapTimedOutLogged;
+    private bool missingAnimatorControllerWarningLogged;
     private const float RemoteLerpSpeed = 18f;
     private readonly NetworkVariable<Vector3> syncedPosition = new(
         default,
@@ -44,8 +47,10 @@ public class PlayerMovement : NetworkBehaviour
     void Awake()
     {
         controller = GetComponent<CharacterController>();
-        characterAnimator = GetComponentInChildren<Animator>(true);
-        gun = GetComponentInChildren<Gun>(true);
+        characterAnimator = FindPlayableAnimator();
+        playerInput = GetComponent<PlayerInput>();
+        weaponManager = GetComponent<WeaponManager>();
+        legacyGun = GetComponentInChildren<Gun>(true);
         spawnTime = Time.time;
         if (characterAnimator != null)
         {
@@ -72,27 +77,81 @@ public class PlayerMovement : NetworkBehaviour
     {
         if (!CanProcessLocalInput()) return;
         if (value == null || !value.isPressed) return;
-        FireCurrentGun();
+        FireCurrentWeapon();
     }
 
     public void OnAttack()
     {
         if (!CanProcessLocalInput()) return;
-        FireCurrentGun();
+        FireCurrentWeapon();
     }
 
-    private void FireCurrentGun()
+    public void OnNext(InputValue value)
     {
-        if (gun == null)
-            gun = GetComponentInChildren<Gun>(true);
+        if (!CanProcessLocalInput()) return;
+        if (value == null || !value.isPressed) return;
+        SwitchToNextWeapon();
+    }
 
-        if (gun == null)
+    public void OnNext()
+    {
+        if (!CanProcessLocalInput()) return;
+        SwitchToNextWeapon();
+    }
+
+    public void OnPrevious(InputValue value)
+    {
+        if (!CanProcessLocalInput()) return;
+        if (value == null || !value.isPressed) return;
+        SwitchToPreviousWeapon();
+    }
+
+    public void OnPrevious()
+    {
+        if (!CanProcessLocalInput()) return;
+        SwitchToPreviousWeapon();
+    }
+
+    private void FireCurrentWeapon()
+    {
+        if (weaponManager != null)
+        {
+            weaponManager.FireCurrent();
+            return;
+        }
+
+        if (legacyGun == null)
+            legacyGun = GetComponentInChildren<Gun>(true);
+
+        if (legacyGun == null)
         {
             Debug.LogWarning("PlayerMovement: Attack received but no Gun component was found in children.");
             return;
         }
 
-        gun.TriggerAttack();
+        legacyGun.TriggerAttack();
+    }
+
+    private void SwitchToNextWeapon()
+    {
+        if (weaponManager == null)
+        {
+            Debug.LogWarning("PlayerMovement: No WeaponManager found for Next weapon input.");
+            return;
+        }
+
+        weaponManager.NextWeapon();
+    }
+
+    private void SwitchToPreviousWeapon()
+    {
+        if (weaponManager == null)
+        {
+            Debug.LogWarning("PlayerMovement: No WeaponManager found for Previous weapon input.");
+            return;
+        }
+
+        weaponManager.PreviousWeapon();
     }
 
     void Update()
@@ -128,6 +187,15 @@ public class PlayerMovement : NetworkBehaviour
                 Debug.Log("PlayerMovement: Jump initiated");
                 velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
             }
+
+            // Fallback input while PlayerInput actions are not configured on the prefab.
+            if (ShouldUseDirectInputFallback())
+            {
+                if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+                    FireCurrentWeapon();
+                if (Keyboard.current.digit1Key.wasPressedThisFrame) SwitchToPreviousWeapon();
+                if (Keyboard.current.digit2Key.wasPressedThisFrame) SwitchToNextWeapon();
+            }
         }
 
         Vector3 move = transform.right * input.x + transform.forward * input.y;
@@ -156,6 +224,11 @@ public class PlayerMovement : NetworkBehaviour
     {
         if (!IsSpawned) return true;
         return IsOwner;
+    }
+
+    private bool ShouldUseDirectInputFallback()
+    {
+        return playerInput == null || playerInput.actions == null;
     }
 
     private void TryGroundSnapDuringSpawnWindow()
@@ -265,6 +338,16 @@ public class PlayerMovement : NetworkBehaviour
     private void UpdateAnimator(float moveSpeed, bool grounded)
     {
         if (characterAnimator == null) return;
+        if (characterAnimator.runtimeAnimatorController == null)
+        {
+            if (!missingAnimatorControllerWarningLogged)
+            {
+                Debug.LogWarning(
+                    "PlayerMovement: Animator exists but has no RuntimeAnimatorController; skipping animator parameter updates.");
+                missingAnimatorControllerWarningLogged = true;
+            }
+            return;
+        }
 
         // Supports common animator param names used in imported controllers.
         SetAnimatorFloatIfExists("speed", moveSpeed);
@@ -293,6 +376,7 @@ public class PlayerMovement : NetworkBehaviour
     private bool HasAnimatorParameter(int hash, AnimatorControllerParameterType type)
     {
         if (characterAnimator == null) return false;
+        if (characterAnimator.runtimeAnimatorController == null) return false;
         var parameters = characterAnimator.parameters;
         for (int i = 0; i < parameters.Length; i++)
         {
@@ -301,5 +385,25 @@ public class PlayerMovement : NetworkBehaviour
         }
 
         return false;
+    }
+
+    private Animator FindPlayableAnimator()
+    {
+        Animator[] animators = GetComponentsInChildren<Animator>(true);
+        Animator fallback = null;
+
+        for (int i = 0; i < animators.Length; i++)
+        {
+            Animator candidate = animators[i];
+            if (candidate == null) continue;
+            if (fallback == null) fallback = candidate;
+
+            if (candidate.runtimeAnimatorController != null)
+            {
+                return candidate;
+            }
+        }
+
+        return fallback;
     }
 }

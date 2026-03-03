@@ -1,15 +1,22 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using Unity.Netcode;
 
-public class MouseLook : MonoBehaviour
+public class MouseLook : NetworkBehaviour
 {
     public float mouseSensitivity = 200f;
-    public Transform cameraTransform;
+    public Transform cameraPivot; // assign CameraPivot
 
-    private float xRotation = 0f;
+    float xRotation = 0f;
 
-    void Start()
+    public override void OnNetworkSpawn()
     {
+        if (!IsOwner)
+        {
+            enabled = false;
+            return;
+        }
+
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
     }
@@ -23,13 +30,12 @@ public class MouseLook : MonoBehaviour
         float mouseX = mouseDelta.x * mouseSensitivity * Time.deltaTime;
         float mouseY = mouseDelta.y * mouseSensitivity * Time.deltaTime;
 
-        // Rotate player left/right
-        transform.Rotate(Vector3.up * mouseX);
+        // Yaw on player root
+        transform.Rotate(0f, mouseX, 0f);
 
-        // Rotate camera up/down
+        // Pitch on camera pivot
         xRotation -= mouseY;
-        xRotation = Mathf.Clamp(xRotation, -90f, 90f);
-
-        cameraTransform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
+        xRotation = Mathf.Clamp(xRotation, -85f, 85f);
+        cameraPivot.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
     }
 }
