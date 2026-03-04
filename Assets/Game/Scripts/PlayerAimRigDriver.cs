@@ -7,6 +7,13 @@ using UnityEngine.Animations.Rigging;
 [DisallowMultipleComponent]
 public class PlayerAimRigDriver : NetworkBehaviour
 {
+    private enum WeaponIKTargetSource
+    {
+        Auto,
+        WorldModelOnly,
+        ViewModelOnly
+    }
+
     [Header("Aim Target")]
     [SerializeField] private Transform aimTarget;
     [SerializeField] private Transform aimSource;
@@ -31,10 +38,21 @@ public class PlayerAimRigDriver : NetworkBehaviour
     [SerializeField] private bool enableWeaponHandIK = true;
     [SerializeField] private bool useRightHandIK;
     [SerializeField] private bool useLeftHandIK = true;
+    [SerializeField, Range(0f, 1f)] private float handIKHintWeight = 0f;
     [SerializeField] private bool driveWeaponHandIKForOwnerOnly;
     [SerializeField] private bool applyWeaponHandIKForOwnerViewModel = true;
+    [SerializeField] private WeaponIKTargetSource weaponIKTargetSource = WeaponIKTargetSource.WorldModelOnly;
+    [SerializeField] private bool preventCyclicIKTargets = true;
+    [SerializeField] private bool createFallbackWeaponGripsIfMissing;
     [SerializeField] private string rightHandGripName = "RightHandGrip";
     [SerializeField] private string leftHandGripName = "LeftHandGrip";
+    [Header("IK Console Debug")]
+    [SerializeField] private bool debugConsoleIK;
+    [SerializeField] private float debugConsoleIKInterval = 0.4f;
+    [SerializeField] private bool debugShowHandTargets;
+    [SerializeField] private float debugTargetRadius = 0.04f;
+    [SerializeField] private Color debugRightHandColor = Color.cyan;
+    [SerializeField] private Color debugLeftHandColor = Color.magenta;
     [SerializeField] private Vector3 rightHandGripFallbackLocalPosition = new(0.11f, -0.06f, 0.2f);
     [SerializeField] private Vector3 leftHandGripFallbackLocalPosition = new(-0.08f, -0.02f, 0.08f);
     [SerializeField] private Vector3 rightElbowHintLocalOffset = new(0.2f, -0.05f, -0.2f);
@@ -53,6 +71,11 @@ public class PlayerAimRigDriver : NetworkBehaviour
     private Transform leftHandIKHint;
     private Transform rightUpperArm;
     private Transform leftUpperArm;
+    private bool loggedWeaponIKTarget;
+    private GameObject debugRightHandle;
+    private GameObject debugLeftHandle;
+    private float nextIKDebugLogTime;
+    private string lastIKDebugMessage;
 
     private void Awake()
     {
@@ -134,6 +157,13 @@ public class PlayerAimRigDriver : NetworkBehaviour
         {
             RebuildRig();
         }
+
+        LogIKDebug(
+            $"Initialized. owner={IsOwner} spawned={IsSpawned} " +
+            $"enableWeaponHandIK={enableWeaponHandIK} " +
+            $"rightConstraint={(rightHandIKConstraint != null)} leftConstraint={(leftHandIKConstraint != null)} " +
+            $"rightTarget={(rightHandIKTarget != null)} leftTarget={(leftHandIKTarget != null)}",
+            true);
         initialized = true;
         return true;
     }
@@ -613,7 +643,8 @@ public class PlayerAimRigDriver : NetworkBehaviour
             rightLowerArm,
             rightHand,
             rightHandIKTarget,
-            rightHandIKHint);
+            rightHandIKHint,
+            handIKHintWeight);
 
         changed |= EnsureTwoBoneIKConstraint(
             ref leftHandIKConstraint,
@@ -622,7 +653,8 @@ public class PlayerAimRigDriver : NetworkBehaviour
             leftLowerArm,
             leftHand,
             leftHandIKTarget,
-            leftHandIKHint);
+            leftHandIKHint,
+            handIKHintWeight);
 
         EnsureRigLayerContainsRig(activeRigBuilder, rig);
         return changed;
@@ -635,7 +667,8 @@ public class PlayerAimRigDriver : NetworkBehaviour
         Transform midBone,
         Transform tipBone,
         Transform targetTransform,
-        Transform hintTransform)
+        Transform hintTransform,
+        float hintWeight)
     {
         if (constraintTransform == null || rootBone == null || midBone == null || tipBone == null || targetTransform == null)
         {
@@ -679,7 +712,16 @@ public class PlayerAimRigDriver : NetworkBehaviour
             changed = true;
         }
 
-        if (hintTransform != null && data.hint != hintTransform)
+        float clampedHintWeight = Mathf.Clamp01(hintWeight);
+        if (clampedHintWeight <= 0.001f)
+        {
+            if (data.hint != null)
+            {
+                data.hint = null;
+                changed = true;
+            }
+        }
+        else if (hintTransform != null && data.hint != hintTransform)
         {
             data.hint = hintTransform;
             changed = true;
@@ -697,9 +739,9 @@ public class PlayerAimRigDriver : NetworkBehaviour
             changed = true;
         }
 
-        if (Mathf.Abs(data.hintWeight - 1f) > 0.001f)
+        if (Mathf.Abs(data.hintWeight - clampedHintWeight) > 0.001f)
         {
-            data.hintWeight = 1f;
+            data.hintWeight = clampedHintWeight;
             changed = true;
         }
 
@@ -717,40 +759,81 @@ public class PlayerAimRigDriver : NetworkBehaviour
     {
         if (!ShouldDriveWeaponHandIK())
         {
+            LogIKDebug("Skipping weapon hand IK: ShouldDriveWeaponHandIK() returned false.");
             SetHandIKWeights(0f);
             return;
         }
 
         if (rightHandIKConstraint == null || leftHandIKConstraint == null || rightHandIKTarget == null || leftHandIKTarget == null)
         {
+            LogIKDebug(
+                $"Skipping weapon hand IK: missing references " +
+                $"rightConstraint={(rightHandIKConstraint != null)} leftConstraint={(leftHandIKConstraint != null)} " +
+                $"rightTarget={(rightHandIKTarget != null)} leftTarget={(leftHandIKTarget != null)}");
             return;
         }
 
         Transform weaponTransform = ResolveActiveWeaponTransformForIK();
         if (weaponTransform == null)
         {
+            LogIKDebug("No active weapon transform resolved for IK. Setting hand weights to 0.");
             SetHandIKWeights(0f);
             return;
         }
 
-        Transform rightGrip = FindOrCreateGrip(weaponTransform, rightHandGripName, rightHandGripFallbackLocalPosition);
-        Transform leftGrip = FindOrCreateGrip(weaponTransform, leftHandGripName, leftHandGripFallbackLocalPosition);
+        if (!loggedWeaponIKTarget)
+        {
+            loggedWeaponIKTarget = true;
+            Debug.Log($"PlayerAimRigDriver: IK weapon target='{weaponTransform.name}'.");
+        }
+
+        Transform rightGrip = FindGrip(weaponTransform, rightHandGripName);
+        Transform leftGrip = FindGrip(weaponTransform, leftHandGripName);
+
+        if (createFallbackWeaponGripsIfMissing)
+        {
+            if (rightGrip == null)
+            {
+                rightGrip = FindOrCreateGrip(weaponTransform, rightHandGripName, rightHandGripFallbackLocalPosition);
+            }
+
+            if (leftGrip == null)
+            {
+                leftGrip = FindOrCreateGrip(weaponTransform, leftHandGripName, leftHandGripFallbackLocalPosition);
+            }
+        }
 
         bool hasRightGrip = rightGrip != null;
         bool hasLeftGrip = leftGrip != null;
 
+        LogIKDebug(
+            $"Weapon='{weaponTransform.name}' rightGrip={(hasRightGrip ? rightGrip.name : "missing")} " +
+            $"leftGrip={(hasLeftGrip ? leftGrip.name : "missing")} " +
+            $"fallbackGripCreation={createFallbackWeaponGripsIfMissing}");
+
         if (hasRightGrip)
         {
-            rightHandIKTarget.SetPositionAndRotation(rightGrip.position, rightGrip.rotation);
+            rightHandIKTarget.SetPositionAndRotation(
+                rightGrip.position,
+                GetGripRotation(rightGrip, weaponTransform));
         }
 
         if (hasLeftGrip)
         {
-            leftHandIKTarget.SetPositionAndRotation(leftGrip.position, leftGrip.rotation);
+            leftHandIKTarget.SetPositionAndRotation(
+                leftGrip.position,
+                GetGripRotation(leftGrip, weaponTransform));
         }
+
+        UpdateDebugHandle(ref debugRightHandle, hasRightGrip, rightGrip != null ? rightGrip.position : Vector3.zero, debugRightHandColor);
+        UpdateDebugHandle(ref debugLeftHandle, hasLeftGrip, leftGrip != null ? leftGrip.position : Vector3.zero, debugLeftHandColor);
 
         rightHandIKConstraint.weight = useRightHandIK && hasRightGrip ? 1f : 0f;
         leftHandIKConstraint.weight = useLeftHandIK && hasLeftGrip ? 1f : 0f;
+
+        LogIKDebug(
+            $"Applied IK weights: right={rightHandIKConstraint.weight:0.00} left={leftHandIKConstraint.weight:0.00} " +
+            $"useRight={useRightHandIK} useLeft={useLeftHandIK}");
     }
 
     private bool ShouldDriveWeaponHandIK()
@@ -770,12 +853,34 @@ public class PlayerAimRigDriver : NetworkBehaviour
 
         if (weaponManager == null) return null;
 
-        if (weaponManager.EquippedWorldModel != null)
+        bool localAuthority = !IsSpawned || IsOwner;
+        switch (weaponIKTargetSource)
         {
-            return weaponManager.EquippedWorldModel.transform;
+            case WeaponIKTargetSource.WorldModelOnly:
+                if (weaponManager.EquippedWorldModel != null)
+                {
+                    Transform worldOnly = weaponManager.EquippedWorldModel.transform;
+                    if (IsSafeWeaponIKTarget(worldOnly)) return worldOnly;
+                }
+                return null;
+            case WeaponIKTargetSource.ViewModelOnly:
+                if (localAuthority && weaponManager.EquippedViewModel != null) return weaponManager.EquippedViewModel.transform;
+                return null;
         }
 
-        bool localAuthority = !IsSpawned || IsOwner;
+        if (weaponManager.EquippedWorldModel != null)
+        {
+            Transform worldModel = weaponManager.EquippedWorldModel.transform;
+            if (IsSafeWeaponIKTarget(worldModel))
+            {
+                return worldModel;
+            }
+
+            LogIKDebug(
+                $"Rejected world-model IK target '{worldModel.name}' because it is under animated hierarchy. " +
+                "Falling back to viewmodel/none.");
+        }
+
         if (localAuthority && applyWeaponHandIKForOwnerViewModel && weaponManager.EquippedViewModel != null)
         {
             return weaponManager.EquippedViewModel.transform;
@@ -787,6 +892,35 @@ public class PlayerAimRigDriver : NetworkBehaviour
         }
 
         return null;
+    }
+
+    private bool IsSafeWeaponIKTarget(Transform candidate)
+    {
+        if (candidate == null) return false;
+        if (!preventCyclicIKTargets) return true;
+        if (animatedHierarchyAnimator == null) return true;
+        return !candidate.IsChildOf(animatedHierarchyAnimator.transform);
+    }
+
+    private static Transform FindGrip(Transform weaponRoot, string gripName)
+    {
+        if (weaponRoot == null || string.IsNullOrWhiteSpace(gripName)) return null;
+        return FindDescendantByName(weaponRoot, gripName);
+    }
+
+    private static Quaternion GetGripRotation(Transform grip, Transform weaponTransform)
+    {
+        if (grip != null)
+        {
+            return grip.rotation;
+        }
+
+        if (weaponTransform != null)
+        {
+            return Quaternion.LookRotation(weaponTransform.forward, weaponTransform.up);
+        }
+
+        return Quaternion.identity;
     }
 
     private static Transform FindOrCreateGrip(Transform weaponRoot, string gripName, Vector3 localFallbackPosition)
@@ -829,12 +963,78 @@ public class PlayerAimRigDriver : NetworkBehaviour
         }
     }
 
+    private void UpdateDebugHandle(ref GameObject handle, bool active, Vector3 position, Color color)
+    {
+        if (!debugShowHandTargets)
+        {
+            if (handle != null && handle.activeSelf)
+            {
+                handle.SetActive(false);
+            }
+            return;
+        }
+
+        if (handle == null)
+        {
+            handle = CreateDebugHandle(color);
+            if (handle == null) return;
+        }
+
+        handle.SetActive(active);
+        if (active)
+        {
+            handle.transform.position = position;
+        }
+    }
+
+    private GameObject CreateDebugHandle(Color color)
+    {
+        GameObject debugHandle = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        Collider collider = debugHandle.GetComponent<Collider>();
+        if (collider != null)
+        {
+            Destroy(collider);
+        }
+
+        debugHandle.name = "HandIKTarget";
+        debugHandle.transform.SetParent(transform, false);
+        debugHandle.transform.localScale = Vector3.one * debugTargetRadius;
+
+        Renderer renderer = debugHandle.GetComponent<Renderer>();
+        if (renderer != null)
+        {
+            Shader shader = Shader.Find("Unlit/Color");
+            Material mat = shader != null ? new Material(shader) : new Material(Shader.Find("Standard"));
+            mat.color = color;
+            renderer.material = mat;
+        }
+
+        return debugHandle;
+    }
+
     private void RebuildRig()
     {
         if (activeRigBuilder == null) return;
 
         activeRigBuilder.Clear();
         activeRigBuilder.Build();
+        LogIKDebug($"Rig rebuilt on '{activeRigBuilder.gameObject.name}'.", true);
+    }
+
+    private void LogIKDebug(string message, bool force = false)
+    {
+        if (!debugConsoleIK) return;
+        if (string.IsNullOrWhiteSpace(message)) return;
+
+        float now = Time.unscaledTime;
+        float interval = Mathf.Max(0.05f, debugConsoleIKInterval);
+        bool canLogNow = force || now >= nextIKDebugLogTime;
+        bool changedMessage = !string.Equals(lastIKDebugMessage, message, StringComparison.Ordinal);
+        if (!canLogNow && !changedMessage) return;
+
+        Debug.Log($"PlayerAimRigDriver[{name}]: {message}");
+        lastIKDebugMessage = message;
+        nextIKDebugLogTime = now + interval;
     }
 
     private static Transform FindDescendantByName(Transform root, string targetName)

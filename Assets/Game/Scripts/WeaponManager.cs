@@ -54,6 +54,9 @@ public class WeaponManager : NetworkBehaviour
         if (!lockViewModelToCamera || ownerCamera == null) return;
         if (equippedViewModel == null) return;
 
+        bool usingCameraFallbackAnchor = viewModelSocket == null;
+        if (!usingCameraFallbackAnchor) return;
+
         if (equippedViewModel.transform.parent != ownerCamera.transform)
         {
             equippedViewModel.transform.SetParent(ownerCamera.transform, false);
@@ -156,9 +159,11 @@ public class WeaponManager : NetworkBehaviour
         if (shouldSpawnViewModel)
         {
             Transform viewSocket = viewModelSocket;
-            if (lockViewModelToCamera && ownerCamera != null)
+            bool usingCameraFallbackAnchor = false;
+            if (viewSocket == null && lockViewModelToCamera && ownerCamera != null)
             {
                 viewSocket = ownerCamera.transform;
+                usingCameraFallbackAnchor = true;
             }
 
             if (viewSocket == null)
@@ -175,8 +180,8 @@ public class WeaponManager : NetworkBehaviour
                     weapon.viewModelPrefab,
                     viewSocket,
                     isViewModel: true,
-                    localPosition: viewModelPositionOffset,
-                    localRotation: Quaternion.Euler(viewModelEulerOffset));
+                    localPosition: usingCameraFallbackAnchor ? viewModelPositionOffset : Vector3.zero,
+                    localRotation: usingCameraFallbackAnchor ? Quaternion.Euler(viewModelEulerOffset) : Quaternion.identity);
                 spawnedAny |= equippedViewModel != null;
             }
         }
@@ -244,6 +249,7 @@ public class WeaponManager : NetworkBehaviour
         instance.transform.localPosition = localPosition;
         instance.transform.localRotation = localRotation;
         // Keep authored prefab scale (e.g. mirrored axes) instead of forcing 1,1,1.
+        SetLayerRecursively(instance, socket.gameObject.layer);
 
         if (isViewModel && disableViewModelPhysics)
         {
@@ -359,6 +365,20 @@ public class WeaponManager : NetworkBehaviour
             Collider collider = colliders[i];
             if (collider == null) continue;
             collider.enabled = false;
+        }
+    }
+
+    private static void SetLayerRecursively(GameObject root, int layer)
+    {
+        if (root == null) return;
+        root.layer = layer;
+
+        Transform rootTransform = root.transform;
+        for (int i = 0; i < rootTransform.childCount; i++)
+        {
+            Transform child = rootTransform.GetChild(i);
+            if (child == null) continue;
+            SetLayerRecursively(child.gameObject, layer);
         }
     }
 }

@@ -270,8 +270,12 @@ MonoBehaviour:
   enableWeaponHandIK: 1
   useRightHandIK: 0
   useLeftHandIK: 1
+  handIKHintWeight: 0
   driveWeaponHandIKForOwnerOnly: 0
-  applyWeaponHandIKForOwnerViewModel: 0
+  applyWeaponHandIKForOwnerViewModel: 1
+  weaponIKTargetSource: 0
+  preventCyclicIKTargets: 1
+  createFallbackWeaponGripsIfMissing: 0
   rightHandGripName: RightHandGrip
   leftHandGripName: LeftHandGrip
   rightHandGripFallbackLocalPosition: {x: 0.11, y: -0.06, z: 0.2}
