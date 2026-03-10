@@ -5,7 +5,8 @@ using Unity.Netcode;
 [RequireComponent(typeof(CharacterController))]
 public class PlayerMovement : NetworkBehaviour
 {
-    public float speed = 6f;
+    public float walkSpeed = 3.5f;
+    public float runSpeed = 6f;
     public float gravity = -9.81f;
     public float jumpHeight = 1.5f; // added jump height
     public float initialGroundSnapDuration = 0.1f;
@@ -22,6 +23,7 @@ public class PlayerMovement : NetworkBehaviour
     private Gun legacyGun;
     private WeaponManager weaponManager;
     private float displayedMoveSpeed;
+    private float displayedMotionSpeed;
     private float spawnTime;
     private bool groundSnapComplete;
     private bool groundSnapTimedOutLogged;
@@ -198,9 +200,12 @@ public class PlayerMovement : NetworkBehaviour
             }
         }
 
+        bool sprintHeld = Keyboard.current != null &&
+            (Keyboard.current.leftShiftKey.isPressed || Keyboard.current.rightShiftKey.isPressed);
+        float motionBlend = Mathf.Clamp01(input.magnitude);
+        float currentMoveSpeed = sprintHeld ? runSpeed : walkSpeed;
         Vector3 move = transform.right * input.x + transform.forward * input.y;
-        float normalizedMoveSpeed = Mathf.Clamp01(input.magnitude);
-        controller.Move(move * speed * Time.deltaTime);
+        controller.Move(move * currentMoveSpeed * Time.deltaTime);
 
         // gravity
         if (controller.isGrounded && velocity.y < 0f)
@@ -209,15 +214,19 @@ public class PlayerMovement : NetworkBehaviour
         velocity.y += gravity * Time.deltaTime;
         controller.Move(velocity * Time.deltaTime);
 
+        float locomotionSpeed = currentMoveSpeed * motionBlend;
+
         if (IsSpawned && IsOwner)
         {
             syncedPosition.Value = transform.position;
             syncedRotation.Value = transform.rotation;
-            syncedMoveSpeed.Value = normalizedMoveSpeed;
+            syncedMoveSpeed.Value = locomotionSpeed;
             syncedGrounded.Value = controller.isGrounded;
         }
 
-        UpdateAnimator(normalizedMoveSpeed, controller.isGrounded);
+        displayedMoveSpeed = Mathf.Lerp(displayedMoveSpeed, locomotionSpeed, Time.deltaTime * RemoteLerpSpeed);
+        displayedMotionSpeed = Mathf.Lerp(displayedMotionSpeed, motionBlend, Time.deltaTime * RemoteLerpSpeed);
+        UpdateAnimator(displayedMoveSpeed, displayedMotionSpeed, controller.isGrounded);
     }
 
     private bool CanProcessLocalInput()
@@ -332,10 +341,13 @@ public class PlayerMovement : NetworkBehaviour
 
         float smoothedSpeed = Mathf.Lerp(displayedMoveSpeed, syncedMoveSpeed.Value, Time.deltaTime * RemoteLerpSpeed);
         displayedMoveSpeed = smoothedSpeed;
-        UpdateAnimator(smoothedSpeed, syncedGrounded.Value);
+        float targetMotionSpeed = syncedMoveSpeed.Value > 0.01f ? 1f : 0f;
+        float smoothedMotionSpeed = Mathf.Lerp(displayedMotionSpeed, targetMotionSpeed, Time.deltaTime * RemoteLerpSpeed);
+        displayedMotionSpeed = smoothedMotionSpeed;
+        UpdateAnimator(smoothedSpeed, smoothedMotionSpeed, syncedGrounded.Value);
     }
 
-    private void UpdateAnimator(float moveSpeed, bool grounded)
+    private void UpdateAnimator(float moveSpeed, float motionSpeed, bool grounded)
     {
         if (characterAnimator == null) return;
         if (characterAnimator.runtimeAnimatorController == null)
@@ -349,11 +361,12 @@ public class PlayerMovement : NetworkBehaviour
             return;
         }
 
-        // Supports common animator param names used in imported controllers.
-        SetAnimatorFloatIfExists("speed", moveSpeed);
+        // Supports both the custom lightweight controller and the imported Starter Assets controller.
+        SetAnimatorFloatIfExists("speed", motionSpeed);
         SetAnimatorFloatIfExists("Speed", moveSpeed);
         SetAnimatorFloatIfExists("MoveSpeed", moveSpeed);
         SetAnimatorFloatIfExists("Velocity", moveSpeed);
+        SetAnimatorFloatIfExists("MotionSpeed", motionSpeed);
 
         SetAnimatorBoolIfExists("Grounded", grounded);
         SetAnimatorBoolIfExists("IsGrounded", grounded);
