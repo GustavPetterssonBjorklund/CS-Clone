@@ -38,7 +38,8 @@ public class PlayerAimRigDriver : NetworkBehaviour
     [SerializeField] private bool enableWeaponHandIK = true;
     [SerializeField] private bool useRightHandIK;
     [SerializeField] private bool useLeftHandIK = true;
-    [SerializeField, Range(0f, 1f)] private float handIKHintWeight = 0f;
+    [SerializeField, Range(0f, 1f)] private float rightHandIKHintWeight = 0f;
+    [SerializeField, Range(0f, 1f)] private float leftHandIKHintWeight = 0f;
     [SerializeField] private bool driveWeaponHandIKForOwnerOnly;
     [SerializeField] private bool applyWeaponHandIKForOwnerViewModel = true;
     [SerializeField] private WeaponIKTargetSource weaponIKTargetSource = WeaponIKTargetSource.WorldModelOnly;
@@ -46,6 +47,8 @@ public class PlayerAimRigDriver : NetworkBehaviour
     [SerializeField] private bool createFallbackWeaponGripsIfMissing;
     [SerializeField] private string rightHandGripName = "RightHandGrip";
     [SerializeField] private string leftHandGripName = "LeftHandGrip";
+    [SerializeField] private bool keepHandTargetsOutsideCharacterHitbox = true;
+    [SerializeField, Min(0f)] private float handTargetHitboxPadding = 0.12f;
     [Header("IK Console Debug")]
     [SerializeField] private bool debugConsoleIK;
     [SerializeField] private float debugConsoleIKInterval = 0.4f;
@@ -61,6 +64,7 @@ public class PlayerAimRigDriver : NetworkBehaviour
     private RigBuilder activeRigBuilder;
     private Animator animatedHierarchyAnimator;
     private WeaponManager weaponManager;
+    private CharacterController characterController;
     private bool initialized;
     private bool ownsAimTarget;
     private TwoBoneIKConstraint rightHandIKConstraint;
@@ -80,6 +84,7 @@ public class PlayerAimRigDriver : NetworkBehaviour
     private void Awake()
     {
         weaponManager = GetComponent<WeaponManager>();
+        characterController = GetComponent<CharacterController>();
         InitializeIfNeeded();
     }
 
@@ -644,7 +649,7 @@ public class PlayerAimRigDriver : NetworkBehaviour
             rightHand,
             rightHandIKTarget,
             rightHandIKHint,
-            handIKHintWeight);
+            rightHandIKHintWeight);
 
         changed |= EnsureTwoBoneIKConstraint(
             ref leftHandIKConstraint,
@@ -654,7 +659,7 @@ public class PlayerAimRigDriver : NetworkBehaviour
             leftHand,
             leftHandIKTarget,
             leftHandIKHint,
-            handIKHintWeight);
+            leftHandIKHintWeight);
 
         EnsureRigLayerContainsRig(activeRigBuilder, rig);
         return changed;
@@ -814,14 +819,14 @@ public class PlayerAimRigDriver : NetworkBehaviour
         if (hasRightGrip)
         {
             rightHandIKTarget.SetPositionAndRotation(
-                rightGrip.position,
+                ResolveHandTargetPosition(rightGrip.position, true),
                 GetGripRotation(rightGrip, weaponTransform));
         }
 
         if (hasLeftGrip)
         {
             leftHandIKTarget.SetPositionAndRotation(
-                leftGrip.position,
+                ResolveHandTargetPosition(leftGrip.position, false),
                 GetGripRotation(leftGrip, weaponTransform));
         }
 
@@ -921,6 +926,78 @@ public class PlayerAimRigDriver : NetworkBehaviour
         }
 
         return Quaternion.identity;
+    }
+
+    private Vector3 ResolveHandTargetPosition(Vector3 desiredPosition, bool isRightHand)
+    {
+        if (!keepHandTargetsOutsideCharacterHitbox) return desiredPosition;
+
+        if (characterController == null)
+        {
+            characterController = GetComponent<CharacterController>();
+        }
+
+        if (characterController == null) return desiredPosition;
+
+        GetCharacterControllerCapsule(characterController, out Vector3 capsuleBottom, out Vector3 capsuleTop, out float capsuleRadius);
+
+        float clearance = capsuleRadius + Mathf.Max(0f, handTargetHitboxPadding);
+        Vector3 clampedPosition = desiredPosition;
+        Vector3 closestPointOnAxis = ClosestPointOnSegment(capsuleBottom, capsuleTop, clampedPosition);
+        Vector3 fromCapsule = clampedPosition - closestPointOnAxis;
+        float sqrDistance = fromCapsule.sqrMagnitude;
+
+        Vector3 fallbackDirection = desiredPosition - transform.position;
+        fallbackDirection.y = 0f;
+
+        if (fallbackDirection.sqrMagnitude <= 0.0001f)
+        {
+            fallbackDirection = isRightHand ? transform.right : -transform.right;
+            fallbackDirection += transform.forward * 0.35f;
+        }
+
+        Vector3 pushDirection = sqrDistance > 0.000001f
+            ? fromCapsule.normalized
+            : fallbackDirection.normalized;
+
+        if (sqrDistance < clearance * clearance)
+        {
+            clampedPosition = closestPointOnAxis + (pushDirection * clearance);
+        }
+
+        return clampedPosition;
+    }
+
+    private static void GetCharacterControllerCapsule(
+        CharacterController controller,
+        out Vector3 capsuleBottom,
+        out Vector3 capsuleTop,
+        out float capsuleRadius)
+    {
+        Transform controllerTransform = controller.transform;
+        Vector3 lossyScale = controllerTransform.lossyScale;
+        float radiusScale = Mathf.Max(Mathf.Abs(lossyScale.x), Mathf.Abs(lossyScale.z));
+        float heightScale = Mathf.Abs(lossyScale.y);
+
+        capsuleRadius = controller.radius * radiusScale;
+        float scaledHeight = controller.height * heightScale;
+        float cylinderHalfHeight = Mathf.Max(0f, (scaledHeight * 0.5f) - capsuleRadius);
+
+        Vector3 worldCenter = controllerTransform.TransformPoint(controller.center);
+        Vector3 up = controllerTransform.up;
+
+        capsuleBottom = worldCenter - (up * cylinderHalfHeight);
+        capsuleTop = worldCenter + (up * cylinderHalfHeight);
+    }
+
+    private static Vector3 ClosestPointOnSegment(Vector3 start, Vector3 end, Vector3 point)
+    {
+        Vector3 segment = end - start;
+        float sqrLength = segment.sqrMagnitude;
+        if (sqrLength <= 0.000001f) return start;
+
+        float t = Mathf.Clamp01(Vector3.Dot(point - start, segment) / sqrLength);
+        return start + (segment * t);
     }
 
     private static Transform FindOrCreateGrip(Transform weaponRoot, string gripName, Vector3 localFallbackPosition)

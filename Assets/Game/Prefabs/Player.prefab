@@ -204,7 +204,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 62899f850307741f2a39c98a8b639597, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.InputSystem::UnityEngine.InputSystem.PlayerInput
-  m_Actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
+  m_Actions: {fileID: 0}
   m_NotificationBehavior: 0
   m_UIInputModule: {fileID: 0}
   m_DeviceLostEvent:
@@ -241,6 +241,12 @@ MonoBehaviour:
   viewModelSocket: {fileID: 4121239088402758427}
   worldModelSocket: {fileID: 8458079769309977152}
   ownerCamera: {fileID: 3564364466439866253}
+  lockViewModelToCamera: 1
+  viewModelPositionOffset: {x: 0, y: -0.3, z: 0.6}
+  viewModelEulerOffset: {x: 0, y: 0, z: 0}
+  spawnWorldModelForOwner: 1
+  enforceViewModelLockInLateUpdate: 1
+  disableViewModelPhysics: 1
 --- !u!114 &2699443412864497319
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -253,6 +259,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9f8f7d262b7e4a6b98f88fd2049f4f51, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerAimRigDriver
+  ShowTopMostFoldoutHeaderGroup: 1
   aimTarget: {fileID: 0}
   aimSource: {fileID: 189708847251670795}
   aimDistance: 25
@@ -265,12 +272,16 @@ MonoBehaviour:
   patchRigAtRuntime: 0
   autoWireMultiAimConstraints: 1
   wireAllMultiAimConstraints: 0
+  preferredConstraintNames:
+  - SpineAim
+  - UpperChestAim
   keepRigsUnderAnimatedHierarchy: 1
   autoCreateAimRigIfMissing: 1
   enableWeaponHandIK: 1
   useRightHandIK: 0
   useLeftHandIK: 1
-  handIKHintWeight: 0
+  rightHandIKHintWeight: 0
+  leftHandIKHintWeight: 0.65
   driveWeaponHandIKForOwnerOnly: 0
   applyWeaponHandIKForOwnerViewModel: 1
   weaponIKTargetSource: 0
@@ -278,13 +289,18 @@ MonoBehaviour:
   createFallbackWeaponGripsIfMissing: 0
   rightHandGripName: RightHandGrip
   leftHandGripName: LeftHandGrip
+  keepHandTargetsOutsideCharacterHitbox: 1
+  handTargetHitboxPadding: 0.12
+  debugConsoleIK: 0
+  debugConsoleIKInterval: 0.4
+  debugShowHandTargets: 0
+  debugTargetRadius: 0.04
+  debugRightHandColor: {r: 0, g: 1, b: 1, a: 1}
+  debugLeftHandColor: {r: 1, g: 0, b: 1, a: 1}
   rightHandGripFallbackLocalPosition: {x: 0.11, y: -0.06, z: 0.2}
   leftHandGripFallbackLocalPosition: {x: -0.08, y: -0.02, z: 0.08}
   rightElbowHintLocalOffset: {x: 0.2, y: -0.05, z: -0.2}
   leftElbowHintLocalOffset: {x: -0.2, y: -0.05, z: -0.2}
-  preferredConstraintNames:
-  - SpineAim
-  - UpperChestAim
 --- !u!1 &4220171307126403418
 GameObject:
   m_ObjectHideFlags: 0
@@ -447,8 +463,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 6121808318527271503}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: -0.3, z: 0.6}
+  m_LocalRotation: {x: 0, y: 0.030800203, z: 0, w: 0.99952555}
+  m_LocalPosition: {x: 0.16, y: -0.19, z: 0.29}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
