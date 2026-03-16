@@ -121,13 +121,13 @@ CharacterController:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Height: 1.8
-  m_Radius: 0.2
+  m_Height: 1.7
+  m_Radius: 0.15
   m_SlopeLimit: 45
-  m_StepOffset: 0.3
-  m_SkinWidth: 0.08
-  m_MinMoveDistance: 0.001
-  m_Center: {x: 0, y: 0.5, z: 0}
+  m_StepOffset: 0.25
+  m_SkinWidth: 0.02
+  m_MinMoveDistance: 0
+  m_Center: {x: 0, y: 0.88, z: 0}
 --- !u!114 &-2707077401430508074
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -193,6 +193,8 @@ MonoBehaviour:
   ShowTopMostFoldoutHeaderGroup: 1
   mouseSensitivity: 30
   cameraPivot: {fileID: 1855636775250910403}
+  minPitch: -60
+  maxPitch: 50
 --- !u!114 &3326065646680117410
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -268,6 +270,9 @@ MonoBehaviour:
   createAimTargetIfMissing: 1
   aimTargetName: AimTarget
   driveAimTargetFromCamera: 1
+  clampRigAimPitch: 1
+  minRigAimPitch: -35
+  maxRigAimPitch: 25
   rotateBodyYawToAim: 0
   yawRotationSpeed: 14
   patchRigAtRuntime: 0
@@ -291,7 +296,9 @@ MonoBehaviour:
   rightHandGripName: RightHandGrip
   leftHandGripName: LeftHandGrip
   keepHandTargetsOutsideCharacterHitbox: 1
-  handTargetHitboxPadding: 0.12
+  handTargetHitboxPadding: 0.05
+  keepLeftElbowOutsideCharacterHitbox: 1
+  leftElbowHitboxPadding: 0.04
   debugConsoleIK: 0
   debugConsoleIKInterval: 0.4
   debugShowHandTargets: 0

@@ -6,6 +6,8 @@ public class MouseLook : NetworkBehaviour
 {
     public float mouseSensitivity = 200f;
     public Transform cameraPivot; // assign CameraPivot
+    [SerializeField] private float minPitch = -60f;
+    [SerializeField] private float maxPitch = 50f;
 
     float xRotation = 0f;
 
@@ -35,7 +37,7 @@ public class MouseLook : NetworkBehaviour
 
         // Pitch on camera pivot
         xRotation -= mouseY;
-        xRotation = Mathf.Clamp(xRotation, -85f, 85f);
+        xRotation = Mathf.Clamp(xRotation, minPitch, maxPitch);
         cameraPivot.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
     }
 }

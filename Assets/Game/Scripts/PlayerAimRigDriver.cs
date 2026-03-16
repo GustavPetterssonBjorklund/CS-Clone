@@ -22,6 +22,9 @@ public class PlayerAimRigDriver : NetworkBehaviour
     [SerializeField] private bool createAimTargetIfMissing = true;
     [SerializeField] private string aimTargetName = "AimTarget";
     [SerializeField] private bool driveAimTargetFromCamera = true;
+    [SerializeField] private bool clampRigAimPitch = true;
+    [SerializeField] private float minRigAimPitch = -40f;
+    [SerializeField] private float maxRigAimPitch = 30f;
 
     [Header("Body Yaw")]
     [SerializeField] private bool rotateBodyYawToAim;
@@ -49,6 +52,8 @@ public class PlayerAimRigDriver : NetworkBehaviour
     [SerializeField] private string leftHandGripName = "LeftHandGrip";
     [SerializeField] private bool keepHandTargetsOutsideCharacterHitbox = true;
     [SerializeField, Min(0f)] private float handTargetHitboxPadding = 0.12f;
+    [SerializeField] private bool keepLeftElbowOutsideCharacterHitbox = true;
+    [SerializeField, Min(0f)] private float leftElbowHitboxPadding = 0.08f;
     [Header("IK Console Debug")]
     [SerializeField] private bool debugConsoleIK;
     [SerializeField] private float debugConsoleIKInterval = 0.4f;
@@ -114,7 +119,8 @@ public class PlayerAimRigDriver : NetworkBehaviour
         if (driveAimTargetFromCamera && ownsAimTarget)
         {
             float distance = Mathf.Max(1f, aimDistance);
-            targetPosition = aimSource.position + (aimSource.forward * distance);
+            Vector3 aimDirection = ResolveRigAimDirection();
+            targetPosition = aimSource.position + (aimDirection * distance);
             aimTarget.position = targetPosition;
         }
 
@@ -127,6 +133,23 @@ public class PlayerAimRigDriver : NetworkBehaviour
         Quaternion desiredYaw = Quaternion.LookRotation(flatDirection.normalized, Vector3.up);
         float t = Mathf.Clamp01(yawRotationSpeed * Time.deltaTime);
         transform.rotation = Quaternion.Slerp(transform.rotation, desiredYaw, t);
+    }
+
+    private Vector3 ResolveRigAimDirection()
+    {
+        if (aimSource == null) return transform.forward;
+
+        Vector3 direction = aimSource.forward;
+        if (!clampRigAimPitch) return direction.normalized;
+
+        Vector3 localDirection = transform.InverseTransformDirection(direction.normalized);
+        float yaw = Mathf.Atan2(localDirection.x, localDirection.z) * Mathf.Rad2Deg;
+        float horizontalMagnitude = new Vector2(localDirection.x, localDirection.z).magnitude;
+        float pitch = Mathf.Atan2(localDirection.y, Mathf.Max(0.0001f, horizontalMagnitude)) * Mathf.Rad2Deg;
+        float clampedPitch = Mathf.Clamp(pitch, minRigAimPitch, maxRigAimPitch);
+
+        Quaternion clampedLocalRotation = Quaternion.Euler(clampedPitch, yaw, 0f);
+        return transform.TransformDirection(clampedLocalRotation * Vector3.forward).normalized;
     }
 
     private bool InitializeIfNeeded()
@@ -830,6 +853,8 @@ public class PlayerAimRigDriver : NetworkBehaviour
                 GetGripRotation(leftGrip, weaponTransform));
         }
 
+        UpdateElbowHintTargets();
+
         UpdateDebugHandle(ref debugRightHandle, hasRightGrip, rightGrip != null ? rightGrip.position : Vector3.zero, debugRightHandColor);
         UpdateDebugHandle(ref debugLeftHandle, hasLeftGrip, leftGrip != null ? leftGrip.position : Vector3.zero, debugLeftHandColor);
 
@@ -931,7 +956,21 @@ public class PlayerAimRigDriver : NetworkBehaviour
     private Vector3 ResolveHandTargetPosition(Vector3 desiredPosition, bool isRightHand)
     {
         if (!keepHandTargetsOutsideCharacterHitbox) return desiredPosition;
+        return ResolvePositionOutsideCharacterHitbox(desiredPosition, handTargetHitboxPadding, isRightHand ? transform.right : -transform.right);
+    }
 
+    private void UpdateElbowHintTargets()
+    {
+        if (!keepLeftElbowOutsideCharacterHitbox) return;
+        if (leftHandIKHint == null || leftUpperArm == null) return;
+
+        Vector3 desiredPosition = leftUpperArm.TransformPoint(leftElbowHintLocalOffset);
+        Vector3 fallbackDirection = (-transform.right + (-transform.forward * 0.35f)).normalized;
+        leftHandIKHint.position = ResolvePositionOutsideCharacterHitbox(desiredPosition, leftElbowHitboxPadding, fallbackDirection);
+    }
+
+    private Vector3 ResolvePositionOutsideCharacterHitbox(Vector3 desiredPosition, float padding, Vector3 fallbackDirection)
+    {
         if (characterController == null)
         {
             characterController = GetComponent<CharacterController>();
@@ -941,24 +980,24 @@ public class PlayerAimRigDriver : NetworkBehaviour
 
         GetCharacterControllerCapsule(characterController, out Vector3 capsuleBottom, out Vector3 capsuleTop, out float capsuleRadius);
 
-        float clearance = capsuleRadius + Mathf.Max(0f, handTargetHitboxPadding);
+        float clearance = capsuleRadius + Mathf.Max(0f, padding);
         Vector3 clampedPosition = desiredPosition;
         Vector3 closestPointOnAxis = ClosestPointOnSegment(capsuleBottom, capsuleTop, clampedPosition);
         Vector3 fromCapsule = clampedPosition - closestPointOnAxis;
         float sqrDistance = fromCapsule.sqrMagnitude;
 
-        Vector3 fallbackDirection = desiredPosition - transform.position;
-        fallbackDirection.y = 0f;
+        Vector3 planarFallbackDirection = fallbackDirection;
+        planarFallbackDirection.y = 0f;
 
-        if (fallbackDirection.sqrMagnitude <= 0.0001f)
+        if (planarFallbackDirection.sqrMagnitude <= 0.0001f)
         {
-            fallbackDirection = isRightHand ? transform.right : -transform.right;
-            fallbackDirection += transform.forward * 0.35f;
+            planarFallbackDirection = desiredPosition - transform.position;
+            planarFallbackDirection.y = 0f;
         }
 
         Vector3 pushDirection = sqrDistance > 0.000001f
             ? fromCapsule.normalized
-            : fallbackDirection.normalized;
+            : planarFallbackDirection.normalized;
 
         if (sqrDistance < clearance * clearance)
         {
