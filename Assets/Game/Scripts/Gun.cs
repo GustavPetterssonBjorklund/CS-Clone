@@ -12,6 +12,10 @@ public class Gun : MonoBehaviour
     public float damage = 25f;
     public float range = 100f;
     public float fireRate = 10f;
+    [SerializeField] private LayerMask hitMask = ~0;
+    [SerializeField, Range(0f, 5f)] private float spreadAngle = 0.15f;
+    [SerializeField] private bool ignoreTriggerColliders = true;
+    [SerializeField] private bool debugShots;
 
     [Header("References")]
     public Camera fpsCam;
@@ -31,15 +35,16 @@ public class Gun : MonoBehaviour
     Vector3 _lineEnd;
     float _lineEndTime;
 
-    public void TriggerAttack()
+    public bool TriggerAttack()
     {
         if (fireRate > 0f)
         {
-            if (Time.time < nextTimeToFire) return;
+            if (Time.time < nextTimeToFire) return false;
             nextTimeToFire = Time.time + (1f / fireRate);
         }
 
         Shoot();
+        return true;
     }
 
     // Called by Input System event
@@ -128,17 +133,22 @@ public class Gun : MonoBehaviour
         if (muzzleFlash) muzzleFlash.Play();
         if (gunSound) gunSound.Play();
 
-        Debug.Log("Gun: Shoot called");
-
         if (fpsCam == null)
         {
             Debug.LogWarning("Gun: fpsCam is null - using gun transform for debug raycast");
         }
 
-        // Debug raycast for better visibility in logs
         Vector3 rayOrigin = fpsCam != null ? fpsCam.transform.position : transform.position;
         Vector3 rayDirection = fpsCam != null ? fpsCam.transform.forward : transform.forward;
-        Debug.DrawRay(rayOrigin, rayDirection * range, Color.red, 1f);
+        rayDirection = ApplySpread(rayDirection);
+        QueryTriggerInteraction triggerInteraction = ignoreTriggerColliders
+            ? QueryTriggerInteraction.Ignore
+            : QueryTriggerInteraction.Collide;
+
+        if (debugShots)
+        {
+            Debug.DrawRay(rayOrigin, rayDirection * range, Color.red, 1f);
+        }
 
         // Set up the LineRenderer positions and timer so the line is visible in Game view
         _lineStart = rayOrigin;
@@ -152,30 +162,21 @@ public class Gun : MonoBehaviour
             lineRenderer.enabled = true;
         }
 
-        if (Physics.Raycast(rayOrigin, rayDirection, out RaycastHit hit, range))
+        if (Physics.Raycast(rayOrigin, rayDirection, out RaycastHit hit, range, hitMask, triggerInteraction))
         {
-            Debug.Log($"Gun: Hit '{hit.transform.name}' at {hit.point} (distance {hit.distance:F2})");
-
-            var target = hit.transform.GetComponent<Target>();
+            Target target = hit.transform.GetComponentInParent<Target>();
             if (target != null)
             {
                 target.TakeDamage(damage);
-                Debug.Log($"Gun: Applied {damage} damage to '{hit.transform.name}'");
-            }
-            else
-            {
-                Debug.Log("Gun: Hit object has no Target component");
+                if (debugShots)
+                {
+                    Debug.Log($"Gun: Applied {damage} damage to '{hit.transform.name}'");
+                }
             }
 
-            // shorten the visible line to the hit point
             _lineEnd = hit.point;
             if (lineRenderer != null) lineRenderer.SetPosition(1, _lineEnd);
         }
-        else
-        {
-            Debug.Log("Gun: Shot missed");
-        }
-        
     }
 
     public void ApplyDefinition(WeaponDefinition weaponDefinition)
@@ -195,6 +196,17 @@ public class Gun : MonoBehaviour
 #else
         return Application.isBatchMode || SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null;
 #endif
+    }
+
+    private Vector3 ApplySpread(Vector3 direction)
+    {
+        if (spreadAngle <= 0.001f) return direction.normalized;
+
+        Quaternion spread = Quaternion.Euler(
+            Random.Range(-spreadAngle, spreadAngle),
+            Random.Range(-spreadAngle, spreadAngle),
+            0f);
+        return spread * direction.normalized;
     }
 }
 

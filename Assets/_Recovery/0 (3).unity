@@ -276,7 +276,7 @@ AudioListener:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 668011269}
-  m_Enabled: 0
+  m_Enabled: 1
 --- !u!20 &668011271
 Camera:
   m_ObjectHideFlags: 0
@@ -401,10 +401,6 @@ GameObject:
   - component: {fileID: 816253769}
   - component: {fileID: 816253773}
   - component: {fileID: 816253774}
-  - component: {fileID: 816253775}
-  - component: {fileID: 816253776}
-  - component: {fileID: 816253777}
-  - component: {fileID: 816253778}
   m_Layer: 0
   m_Name: NetworkManager
   m_TagString: Untagged
@@ -526,7 +522,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 816253768}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 9e0c9b4d6a5e4f3fa0e7c1d2b3a4f567, type: 3}
   m_Name: 
@@ -548,65 +544,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   enforceGuard: 0
   lobbySceneName: Lobby
-  verboseLogs: 1
---- !u!114 &816253775
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 816253768}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b2ea4d33304b4174a8b674fac1d21d47, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::MatchSceneEnemySpawner
-  targetSceneName: NatureWorld
-  enemyPrefab: {fileID: 650000000000000001, guid: 207996d4237d4bf7988dbdc6aa9383ca, type: 3}
-  enemyCount: 5
-  spawnCenter: {x: -13.8, y: 0.15, z: 27.5}
-  spawnRadius: 12
-  spawnHeightOffset: 0.15
-  verboseLogs: 1
---- !u!114 &816253776
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 816253768}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7aa3333dcaa542f0a924d61dc7f40c6a, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::MatchEventHud
-  showHud: 1
-  verboseLogs: 1
---- !u!114 &816253777
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 816253768}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4da182258ed81d14cb258f2ce681219c, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::AutoStartServer
---- !u!114 &816253778
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 816253768}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f4ef42f11f9240d8b0ed93e89b1634bf, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::NetworkPrefabRegistryLogger
-  logOnStart: 1
   verboseLogs: 1
 --- !u!1 &2110000254
 GameObject:
