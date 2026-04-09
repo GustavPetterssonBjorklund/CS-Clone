@@ -16,27 +16,29 @@ public class Target : NetworkBehaviour
     [SerializeField] private Color healthyColor = new(0.22f, 0.75f, 0.25f, 1f);
     [SerializeField] private Color criticalColor = new(0.87f, 0.16f, 0.16f, 1f);
 
-    private readonly NetworkVariable<float> currentHealth = new(
-        100f,
+    private readonly NetworkVariable<float> currentHealth = new(100f,
         NetworkVariableReadPermission.Everyone,
         NetworkVariableWritePermission.Server);
+    private float standaloneHealth;
 
     private Transform healthBarPivot;
     private Transform healthBarFill;
     private Renderer healthBarFillRenderer;
 
     public float MaxHealth => maxHealth;
-    public float CurrentHealth => currentHealth.Value;
+    public float CurrentHealth => IsSpawned ? currentHealth.Value : standaloneHealth;
 
     private void Awake()
     {
-        currentHealth.Value = Mathf.Max(1f, maxHealth);
+        standaloneHealth = Mathf.Max(1f, maxHealth);
         EnsureCollider();
 
         if (autoBuildPresentation)
         {
             EnsurePresentation();
         }
+
+        RefreshHealthBar(standaloneHealth);
     }
 
     public override void OnNetworkSpawn()
@@ -47,7 +49,7 @@ public class Target : NetworkBehaviour
 
         if (IsServer)
         {
-            currentHealth.Value = Mathf.Max(1f, maxHealth);
+            currentHealth.Value = standaloneHealth;
         }
 
         RefreshHealthBar(currentHealth.Value);
@@ -100,8 +102,8 @@ public class Target : NetworkBehaviour
 
     private void ApplyStandaloneDamage(float amount)
     {
-        float nextHealth = Mathf.Max(0f, currentHealth.Value - amount);
-        currentHealth.Value = nextHealth;
+        float nextHealth = Mathf.Max(0f, standaloneHealth - amount);
+        standaloneHealth = nextHealth;
         RefreshHealthBar(nextHealth);
 
         if (nextHealth <= 0f)
@@ -221,7 +223,7 @@ public class Target : NetworkBehaviour
         StripCollider(fill);
         healthBarFill = fill.transform;
         healthBarFillRenderer = fill.GetComponent<Renderer>();
-        RefreshHealthBar(currentHealth.Value <= 0f ? maxHealth : currentHealth.Value);
+        RefreshHealthBar(CurrentHealth);
     }
 
     private static void StripCollider(GameObject gameObject)

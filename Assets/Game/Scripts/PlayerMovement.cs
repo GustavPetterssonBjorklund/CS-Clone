@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using Unity.Netcode;
+using UnityEngine.SceneManagement;
 
 [RequireComponent(typeof(CharacterController))]
 public class PlayerMovement : NetworkBehaviour
@@ -28,6 +29,7 @@ public class PlayerMovement : NetworkBehaviour
     private bool groundSnapComplete;
     private bool groundSnapTimedOutLogged;
     private bool missingAnimatorControllerWarningLogged;
+    private const float MinGroundNormalY = 0.25f;
     private const float RemoteLerpSpeed = 18f;
     private readonly NetworkVariable<Vector3> syncedPosition = new(
         default,
@@ -64,8 +66,20 @@ public class PlayerMovement : NetworkBehaviour
         }
     }
 
+    private void OnEnable()
+    {
+        SceneManager.sceneLoaded += OnSceneLoaded;
+    }
+
+    private void OnDisable()
+    {
+        SceneManager.sceneLoaded -= OnSceneLoaded;
+    }
+
     public override void OnNetworkSpawn()
     {
+        ResetGroundSnapWindow();
+
         if (IsOwner)
         {
             syncedPosition.Value = transform.position;
@@ -73,6 +87,14 @@ public class PlayerMovement : NetworkBehaviour
             syncedMoveSpeed.Value = 0f;
             syncedGrounded.Value = controller != null && controller.isGrounded;
         }
+    }
+
+    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        if (!CanProcessLocalInput()) return;
+
+        ResetGroundSnapWindow();
+        TryRepositionToSceneSpawn(scene);
     }
 
     public void OnAttack(InputValue value)
@@ -240,6 +262,77 @@ public class PlayerMovement : NetworkBehaviour
         return playerInput == null || playerInput.actions == null;
     }
 
+    private void ResetGroundSnapWindow()
+    {
+        spawnTime = Time.time;
+        groundSnapComplete = false;
+        groundSnapTimedOutLogged = false;
+    }
+
+    private void TryRepositionToSceneSpawn(Scene scene)
+    {
+        if (!scene.IsValid() || !scene.isLoaded) return;
+
+        Transform spawnPoint = FindSceneSpawnPoint(scene);
+        if (spawnPoint == null) return;
+
+        float probeDistance = Mathf.Max(1f, groundSnapProbeDistance);
+        Vector3 rayOrigin = spawnPoint.position + Vector3.up * (probeDistance * 0.5f);
+        Vector3 targetPosition = TryFindGroundHit(rayOrigin, probeDistance, out RaycastHit hit)
+            ? hit.point + Vector3.up * Mathf.Max(0.05f, groundSnapOffset)
+            : spawnPoint.position + Vector3.up * Mathf.Max(0.05f, groundSnapOffset);
+
+        bool controllerWasEnabled = controller != null && controller.enabled;
+        if (controllerWasEnabled) controller.enabled = false;
+        transform.SetPositionAndRotation(targetPosition, spawnPoint.rotation);
+        if (controllerWasEnabled) controller.enabled = true;
+
+        velocity = Vector3.zero;
+
+        if (IsSpawned && IsOwner)
+        {
+            syncedPosition.Value = transform.position;
+            syncedRotation.Value = transform.rotation;
+            syncedMoveSpeed.Value = 0f;
+            syncedGrounded.Value = controller != null && controller.isGrounded;
+        }
+
+        if (logGroundSnap)
+        {
+            Debug.Log(
+                $"PlayerMovement: repositioned to spawn '{spawnPoint.name}' in scene '{scene.name}' at {transform.position}.");
+        }
+    }
+
+    private Transform FindSceneSpawnPoint(Scene scene)
+    {
+        GameObject[] roots = scene.GetRootGameObjects();
+        Transform firstSpawnPoint = null;
+
+        for (int i = 0; i < roots.Length; i++)
+        {
+            Transform[] transforms = roots[i].GetComponentsInChildren<Transform>(true);
+            for (int j = 0; j < transforms.Length; j++)
+            {
+                Transform candidate = transforms[j];
+                if (candidate == null) continue;
+                if (!candidate.name.StartsWith("SpawnPoint", System.StringComparison.OrdinalIgnoreCase)) continue;
+
+                if (firstSpawnPoint == null)
+                {
+                    firstSpawnPoint = candidate;
+                }
+
+                if (candidate.gameObject.activeInHierarchy)
+                {
+                    return candidate;
+                }
+            }
+        }
+
+        return firstSpawnPoint;
+    }
+
     private void TryGroundSnapDuringSpawnWindow()
     {
         if (groundSnapComplete) return;
@@ -303,6 +396,7 @@ public class PlayerMovement : NetworkBehaviour
         {
             RaycastHit hit = hits[i];
             if (IsSelfOrCharacterControllerHit(hit.collider)) continue;
+            if (hit.normal.y < MinGroundNormalY) continue;
 
             groundHit = hit;
             return true;

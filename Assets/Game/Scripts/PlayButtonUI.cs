@@ -3,6 +3,8 @@ using UnityEngine.UIElements;
 using Unity.Netcode;
 using Unity.Netcode.Transports.UTP;
 using System.Collections;
+using System.Net;
+using System.Net.Sockets;
 using UnityEngine.SceneManagement;
 
 public class PlayButtonUI : MonoBehaviour
@@ -228,6 +230,7 @@ public class PlayButtonUI : MonoBehaviour
         LogFlow($"OnClientConnected clientId={clientId} localClientId={(nm != null ? nm.LocalClientId : 0)}.");
         if (nm == null || clientId != nm.LocalClientId) return;
         localClientConnected = true;
+        StopConnectTimeout();
         SetStatus("Connected. Waiting for match start...");
     }
 
@@ -277,7 +280,7 @@ public class PlayButtonUI : MonoBehaviour
         float elapsed = 0f;
         while (elapsed < connectTimeoutSeconds)
         {
-            if (matchSceneLoaded) yield break;
+            if (localClientConnected || matchSceneLoaded) yield break;
             elapsed += Time.unscaledDeltaTime;
             yield return null;
         }
@@ -319,6 +322,7 @@ public class PlayButtonUI : MonoBehaviour
 
     private string GetConfiguredAddress()
     {
+        string candidateAddress;
         if (overrideServerAddress)
         {
             if (!string.Equals(serverAddress, DefaultServerAddress, System.StringComparison.Ordinal))
@@ -327,10 +331,40 @@ public class PlayButtonUI : MonoBehaviour
                 serverAddress = DefaultServerAddress;
             }
 
-            return DefaultServerAddress;
+            candidateAddress = DefaultServerAddress;
+        }
+        else
+        {
+            candidateAddress = string.IsNullOrWhiteSpace(serverAddress) ? "127.0.0.1" : serverAddress.Trim();
         }
 
-        return string.IsNullOrWhiteSpace(serverAddress) ? "127.0.0.1" : serverAddress.Trim();
+        return ResolvePreferredClientAddress(candidateAddress);
+    }
+
+    private string ResolvePreferredClientAddress(string address)
+    {
+        if (string.IsNullOrWhiteSpace(address)) return "127.0.0.1";
+        if (IPAddress.TryParse(address, out _)) return address;
+
+        try
+        {
+            IPAddress[] addresses = Dns.GetHostAddresses(address);
+            for (int i = 0; i < addresses.Length; i++)
+            {
+                IPAddress candidate = addresses[i];
+                if (candidate.AddressFamily != AddressFamily.InterNetwork) continue;
+
+                string resolvedAddress = candidate.ToString();
+                LogFlow($"Resolved '{address}' to IPv4 '{resolvedAddress}'.");
+                return resolvedAddress;
+            }
+        }
+        catch (System.Exception ex)
+        {
+            LogFlow($"Address resolution for '{address}' failed: {ex.Message}");
+        }
+
+        return address;
     }
 
     private void LogFlow(string message)

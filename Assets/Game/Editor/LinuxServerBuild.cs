@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.Text;
 using UnityEditor;
@@ -5,28 +6,38 @@ using UnityEditor.Build.Profile;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 
+// Usable on linux, likely to error if used on windows
 public static class LinuxServerBuild
 {
     private const string BuildProfilePath = "Assets/Game/Settings/Build Profiles/Linux Server.asset";
+    private const string MenuRoot = "Build/Linux Server/";
     private const string OutputDirectory = "/tmp/unity-build";
     private const string ExecutableName = "CS-Clone.x86_64";
+    private const string GraphicsSettingsPath = "ProjectSettings/GraphicsSettings.asset";
+    private const string QualitySettingsPath = "ProjectSettings/QualitySettings.asset";
+    private const string RemoteDeviceAddressKey = "m_RemoteDeviceAddress";
+    private const string RemoteDeviceUsernameKey = "m_RemoteDeviceUsername";
+    private const string RemoteDevicePathKey = "m_PathOnRemoteDevice";
+    private const string CommonSshOptions = "-o BatchMode=yes -o StrictHostKeyChecking=accept-new";
 
     private static string OutputPath => Path.Combine(OutputDirectory, ExecutableName);
+    private static string OutputDirectoryContentsPath =>
+        OutputDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + "/.";
 
     [InitializeOnLoadMethod]
     private static void InitializeBuildLocation()
     {
-        EditorUserBuildSettings.SetBuildLocation(BuildTarget.StandaloneLinux64, OutputPath);
+        PinBuildLocation();
     }
 
-    [MenuItem("Build/Linux Server/Use /tmp/unity-build")]
+    [MenuItem(MenuRoot + "Use /tmp/unity-build")]
     public static void PinLinuxServerOutputPath()
     {
-        EditorUserBuildSettings.SetBuildLocation(BuildTarget.StandaloneLinux64, OutputPath);
+        PinBuildLocation();
         Debug.Log($"Linux server build output path set to '{OutputPath}'.");
     }
 
-    [MenuItem("Build/Linux Server/Build To /tmp/unity-build")]
+    [MenuItem(MenuRoot + "Build To /tmp/unity-build")]
     public static void BuildToPinnedLocation()
     {
         if (!BuildToPinnedLocationInternal())
@@ -35,7 +46,7 @@ public static class LinuxServerBuild
         }
     }
 
-    [MenuItem("Build/Linux Server/Upload Existing Build Over SSH")]
+    [MenuItem(MenuRoot + "Upload Existing Build Over SSH")]
     public static void UploadExistingBuild()
     {
         if (!Directory.Exists(OutputDirectory))
@@ -50,28 +61,25 @@ public static class LinuxServerBuild
             return;
         }
 
-        Directory.CreateDirectory(OutputDirectory);
+        EnsureOutputDirectoryExists();
 
-        if (!TryResolveSshTarget(hostAlias, user, out string host, out string resolvedUser, out int port))
+        if (!TryResolveSshTarget(hostAlias, user, out string host, out string resolvedUser, out int? port))
         {
             host = hostAlias;
             resolvedUser = user;
-            port = 22;
+            port = null;
         }
 
         string sshTarget = $"{resolvedUser}@{host}";
-        string sshOptions = BuildSshOptions(port);
-        string scpOptions = BuildScpOptions(port);
-        if (!RunProcess("ssh", $"{sshOptions} {sshTarget} mkdir -p {ShellEscape(remotePath)}", out _, out string sshError))
+        if (!RunProcess("ssh", $"{BuildSshOptions(port)} {sshTarget} mkdir -p {ShellEscape(remotePath)}", out _, out string sshError))
         {
             Debug.LogError(
                 $"Failed to create remote directory '{remotePath}' on '{sshTarget}'.\n{sshError}");
             return;
         }
 
-        string sourcePath = OutputDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + "/.";
         string destination = $"{sshTarget}:{remotePath.TrimEnd('/')}/";
-        if (!RunProcess("scp", $"{scpOptions} -r {ShellEscape(sourcePath)} {ShellEscape(destination)}", out _, out string scpError))
+        if (!RunProcess("scp", $"{BuildScpOptions(port)} -r {ShellEscape(OutputDirectoryContentsPath)} {ShellEscape(destination)}", out _, out string scpError))
         {
             Debug.LogError(
                 $"Failed to upload Linux server build to '{destination}'.\n{scpError}");
@@ -81,7 +89,7 @@ public static class LinuxServerBuild
         Debug.Log($"Uploaded Linux server build from '{OutputDirectory}' to '{destination}'.");
     }
 
-    [MenuItem("Build/Linux Server/Build And Upload Over SSH")]
+    [MenuItem(MenuRoot + "Build And Upload Over SSH")]
     public static void BuildAndUpload()
     {
         if (!BuildToPinnedLocationInternal())
@@ -94,15 +102,13 @@ public static class LinuxServerBuild
 
     private static bool BuildToPinnedLocationInternal()
     {
-        BuildProfile profile = AssetDatabase.LoadAssetAtPath<BuildProfile>(BuildProfilePath);
-        if (profile == null)
+        if (!TryLoadBuildProfile(out BuildProfile profile))
         {
-            Debug.LogError($"Linux server build profile not found at '{BuildProfilePath}'.");
             return false;
         }
 
-        Directory.CreateDirectory(OutputDirectory);
-        EditorUserBuildSettings.SetBuildLocation(BuildTarget.StandaloneLinux64, OutputPath);
+        EnsureOutputDirectoryExists();
+        PinBuildLocation();
 
         BuildPlayerWithProfileOptions options = new BuildPlayerWithProfileOptions
         {
@@ -111,6 +117,8 @@ public static class LinuxServerBuild
             options = BuildOptions.None,
             assetBundleManifestPath = string.Empty,
         };
+
+        using var renderPipelineOverride = DedicatedServerRenderPipelineOverride.Apply();
 
         BuildReport report = BuildPipeline.BuildPlayer(options);
         BuildSummary summary = report.summary;
@@ -129,6 +137,28 @@ public static class LinuxServerBuild
         return true;
     }
 
+    private static void PinBuildLocation()
+    {
+        EditorUserBuildSettings.SetBuildLocation(BuildTarget.StandaloneLinux64, OutputPath);
+    }
+
+    private static void EnsureOutputDirectoryExists()
+    {
+        Directory.CreateDirectory(OutputDirectory);
+    }
+
+    private static bool TryLoadBuildProfile(out BuildProfile profile)
+    {
+        profile = AssetDatabase.LoadAssetAtPath<BuildProfile>(BuildProfilePath);
+        if (profile != null)
+        {
+            return true;
+        }
+
+        Debug.LogError($"Linux server build profile not found at '{BuildProfilePath}'.");
+        return false;
+    }
+
     private static bool TryReadRemoteSettings(out string host, out string user, out string remotePath)
     {
         host = string.Empty;
@@ -142,9 +172,9 @@ public static class LinuxServerBuild
 
         foreach (string line in File.ReadLines(BuildProfilePath))
         {
-            TryReadValue(line, "m_RemoteDeviceAddress", ref host);
-            TryReadValue(line, "m_RemoteDeviceUsername", ref user);
-            TryReadValue(line, "m_PathOnRemoteDevice", ref remotePath);
+            TryReadValue(line, RemoteDeviceAddressKey, ref host);
+            TryReadValue(line, RemoteDeviceUsernameKey, ref user);
+            TryReadValue(line, RemoteDevicePathKey, ref remotePath);
         }
 
         return !string.IsNullOrWhiteSpace(host)
@@ -188,14 +218,22 @@ public static class LinuxServerBuild
         return process.ExitCode == 0;
     }
 
-    private static bool TryResolveSshTarget(string hostAlias, string configuredUser, out string host, out string user, out int port)
+    private static bool TryResolveSshTarget(string hostAlias, string configuredUser, out string host, out string user, out int? port)
     {
         host = hostAlias;
         user = configuredUser;
-        port = 22;
+        port = null;
 
-        if (!RunProcess("ssh", $"-G {ShellEscape(hostAlias)}", out string stdout, out _))
+        if (!RunProcess("ssh", $"-G {ShellEscape(hostAlias)}", out string stdout, out string stderr))
         {
+            if (!string.IsNullOrWhiteSpace(stderr))
+            {
+                Debug.LogWarning(
+                    $"Could not resolve SSH alias '{hostAlias}' with 'ssh -G'. " +
+                    "Falling back to direct SSH invocation.\n" +
+                    stderr.Trim());
+            }
+
             return false;
         }
 
@@ -225,14 +263,102 @@ public static class LinuxServerBuild
         return !string.IsNullOrWhiteSpace(host);
     }
 
-    private static string BuildSshOptions(int port)
+    private sealed class DedicatedServerRenderPipelineOverride : IDisposable
     {
-        return $"-F /dev/null -o BatchMode=yes -o StrictHostKeyChecking=accept-new -p {port}";
+        private readonly string graphicsSettingsContents;
+        private readonly string qualitySettingsContents;
+        private bool disposed;
+
+        private DedicatedServerRenderPipelineOverride(
+            string graphicsSettingsContents,
+            string qualitySettingsContents)
+        {
+            this.graphicsSettingsContents = graphicsSettingsContents;
+            this.qualitySettingsContents = qualitySettingsContents;
+        }
+
+        public static DedicatedServerRenderPipelineOverride Apply()
+        {
+            string graphicsSettingsContents = File.ReadAllText(GraphicsSettingsPath);
+            string qualitySettingsContents = File.ReadAllText(QualitySettingsPath);
+
+            File.WriteAllText(GraphicsSettingsPath, SanitizeGraphicsSettings(graphicsSettingsContents));
+            File.WriteAllText(QualitySettingsPath, SanitizeQualitySettings(qualitySettingsContents));
+            AssetDatabase.Refresh();
+
+            Debug.Log(
+                "Temporarily disabled SRP assets for the dedicated server build to avoid " +
+                "URP shader/script deserialization errors.");
+
+            return new DedicatedServerRenderPipelineOverride(
+                graphicsSettingsContents,
+                qualitySettingsContents);
+        }
+
+        public void Dispose()
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            disposed = true;
+
+            File.WriteAllText(GraphicsSettingsPath, graphicsSettingsContents);
+            File.WriteAllText(QualitySettingsPath, qualitySettingsContents);
+            AssetDatabase.Refresh();
+
+            Debug.Log("Restored SRP assets after the dedicated server build.");
+        }
+
+        private static string SanitizeGraphicsSettings(string contents)
+        {
+            string sanitized = contents.Replace(
+                "  m_CustomRenderPipeline: {fileID: 11400000, guid: 4b83569d67af61e458304325a23e5dfd, type: 2}",
+                "  m_CustomRenderPipeline: {fileID: 0}");
+
+            const string urpGlobalSettingsEntry =
+                "  m_RenderPipelineGlobalSettingsMap:\n" +
+                "    UnityEngine.Rendering.Universal.UniversalRenderPipeline: {fileID: 11400000, guid: 18dc0cd2c080841dea60987a38ce93fa, type: 2}";
+
+            sanitized = sanitized.Replace(
+                urpGlobalSettingsEntry,
+                "  m_RenderPipelineGlobalSettingsMap: {}");
+
+            return sanitized;
+        }
+
+        private static string SanitizeQualitySettings(string contents)
+        {
+            return contents
+                .Replace(
+                    "    customRenderPipeline: {fileID: 11400000, guid: 5e6cbd92db86f4b18aec3ed561671858, type: 2}",
+                    "    customRenderPipeline: {fileID: 0}")
+                .Replace(
+                    "    customRenderPipeline: {fileID: 11400000, guid: 4b83569d67af61e458304325a23e5dfd, type: 2}",
+                    "    customRenderPipeline: {fileID: 0}");
+        }
     }
 
-    private static string BuildScpOptions(int port)
+    private static string BuildSshOptions(int? port)
     {
-        return $"-F /dev/null -o BatchMode=yes -o StrictHostKeyChecking=accept-new -P {port}";
+        return BuildRemoteOptions(port, "-p");
+    }
+
+    private static string BuildScpOptions(int? port)
+    {
+        return BuildRemoteOptions(port, "-P");
+    }
+
+    private static string BuildRemoteOptions(int? port, string portFlag)
+    {
+        var builder = new StringBuilder(CommonSshOptions);
+        if (port.HasValue)
+        {
+            builder.Append($" {portFlag} {port.Value}");
+        }
+
+        return builder.ToString();
     }
 
     private static string ShellEscape(string value)
