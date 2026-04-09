@@ -80,6 +80,12 @@ public class WeaponManager : NetworkBehaviour
     {
         if (!CanProcessLocalInput()) return;
 
+        if (equippedGun == null && HasLoadout())
+        {
+            int equipIndex = currentWeaponIndex >= 0 ? currentWeaponIndex : startingWeaponIndex;
+            EquipIndex(equipIndex);
+        }
+
         if (equippedGun == null)
         {
             equippedGun = GetComponentInChildren<Gun>(true);

@@ -24,13 +24,15 @@ public class Target : NetworkBehaviour
     private Transform healthBarPivot;
     private Transform healthBarFill;
     private Renderer healthBarFillRenderer;
+    private Transform healthBarBackFill;
+    private Renderer healthBarBackFillRenderer;
 
     public float MaxHealth => maxHealth;
     public float CurrentHealth => IsSpawned ? currentHealth.Value : standaloneHealth;
 
     private void Awake()
     {
-        standaloneHealth = Mathf.Max(1f, maxHealth);
+        standaloneHealth = GetSpawnHealth();
         EnsureCollider();
 
         if (autoBuildPresentation)
@@ -45,6 +47,7 @@ public class Target : NetworkBehaviour
     {
         base.OnNetworkSpawn();
 
+        standaloneHealth = GetSpawnHealth();
         currentHealth.OnValueChanged += OnHealthChanged;
 
         if (IsServer)
@@ -52,7 +55,7 @@ public class Target : NetworkBehaviour
             currentHealth.Value = standaloneHealth;
         }
 
-        RefreshHealthBar(currentHealth.Value);
+        RefreshHealthBar(IsServer ? currentHealth.Value : standaloneHealth);
     }
 
     public override void OnNetworkDespawn()
@@ -92,6 +95,7 @@ public class Target : NetworkBehaviour
         if (currentHealth.Value <= 0f) return;
 
         float nextHealth = Mathf.Max(0f, currentHealth.Value - amount);
+        standaloneHealth = nextHealth;
         currentHealth.Value = nextHealth;
 
         if (nextHealth <= 0f)
@@ -128,7 +132,13 @@ public class Target : NetworkBehaviour
 
     private void OnHealthChanged(float previousValue, float nextValue)
     {
+        standaloneHealth = nextValue;
         RefreshHealthBar(nextValue);
+    }
+
+    private float GetSpawnHealth()
+    {
+        return Mathf.Max(1f, maxHealth);
     }
 
     private void RefreshHealthBar(float healthValue)
@@ -139,12 +149,26 @@ public class Target : NetworkBehaviour
         Vector3 localScale = healthBarFill.localScale;
         localScale.x = normalized;
         healthBarFill.localScale = localScale;
-        healthBarFill.localPosition = new Vector3((normalized - 1f) * 0.4f, 0f, -0.001f);
+        healthBarFill.localPosition = new Vector3((normalized - 1f) * 0.4f, 0f, 0.002f);
 
         if (healthBarFillRenderer != null)
         {
             Color tint = Color.Lerp(criticalColor, healthyColor, normalized);
             healthBarFillRenderer.material.color = tint;
+        }
+
+        if (healthBarBackFill != null)
+        {
+            Vector3 backFillScale = healthBarBackFill.localScale;
+            backFillScale.x = normalized;
+            healthBarBackFill.localScale = backFillScale;
+            healthBarBackFill.localPosition = new Vector3((normalized - 1f) * 0.4f, 0f, -0.002f);
+        }
+
+        if (healthBarBackFillRenderer != null)
+        {
+            Color tint = Color.Lerp(criticalColor, healthyColor, normalized);
+            healthBarBackFillRenderer.material.color = tint;
         }
     }
 
@@ -152,10 +176,10 @@ public class Target : NetworkBehaviour
     {
         if (healthBarPivot == null) return;
 
-        Camera activeCamera = Camera.main;
+        Camera activeCamera = GetActiveCamera();
         if (activeCamera == null) return;
 
-        Vector3 toCamera = healthBarPivot.position - activeCamera.transform.position;
+        Vector3 toCamera = activeCamera.transform.position - healthBarPivot.position;
         if (toCamera.sqrMagnitude <= 0.0001f) return;
         healthBarPivot.rotation = Quaternion.LookRotation(toCamera.normalized, Vector3.up);
     }
@@ -210,7 +234,7 @@ public class Target : NetworkBehaviour
         GameObject background = GameObject.CreatePrimitive(PrimitiveType.Cube);
         background.name = "Background";
         background.transform.SetParent(healthBarPivot, false);
-        background.transform.localScale = new Vector3(0.82f, 0.1f, 0.04f);
+        background.transform.localScale = new Vector3(0.82f, 0.1f, 0.01f);
         background.transform.localPosition = Vector3.zero;
         StripCollider(background);
         SetRendererColor(background, new Color(0.12f, 0.12f, 0.12f, 0.9f));
@@ -218,12 +242,41 @@ public class Target : NetworkBehaviour
         GameObject fill = GameObject.CreatePrimitive(PrimitiveType.Cube);
         fill.name = "Fill";
         fill.transform.SetParent(healthBarPivot, false);
-        fill.transform.localScale = new Vector3(0.8f, 0.06f, 0.02f);
-        fill.transform.localPosition = Vector3.zero;
+        fill.transform.localScale = new Vector3(0.8f, 0.06f, 0.008f);
+        fill.transform.localPosition = new Vector3(0f, 0f, 0.002f);
         StripCollider(fill);
         healthBarFill = fill.transform;
         healthBarFillRenderer = fill.GetComponent<Renderer>();
+
+        GameObject backFill = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        backFill.name = "BackFill";
+        backFill.transform.SetParent(healthBarPivot, false);
+        backFill.transform.localScale = new Vector3(0.8f, 0.06f, 0.008f);
+        backFill.transform.localPosition = new Vector3(0f, 0f, -0.002f);
+        StripCollider(backFill);
+        healthBarBackFill = backFill.transform;
+        healthBarBackFillRenderer = backFill.GetComponent<Renderer>();
+
         RefreshHealthBar(CurrentHealth);
+    }
+
+    private static Camera GetActiveCamera()
+    {
+        Camera mainCamera = Camera.main;
+        if (mainCamera != null && mainCamera.isActiveAndEnabled)
+        {
+            return mainCamera;
+        }
+
+        Camera[] cameras = Camera.allCameras;
+        for (int i = 0; i < cameras.Length; i++)
+        {
+            Camera candidate = cameras[i];
+            if (candidate == null || !candidate.isActiveAndEnabled) continue;
+            return candidate;
+        }
+
+        return null;
     }
 
     private static void StripCollider(GameObject gameObject)

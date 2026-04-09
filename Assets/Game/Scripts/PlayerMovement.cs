@@ -208,18 +208,16 @@ public class PlayerMovement : NetworkBehaviour
             // jump: spacebar
             if (controller.isGrounded && Keyboard.current.spaceKey.wasPressedThisFrame)
             {
-                Debug.Log("PlayerMovement: Jump initiated");
                 velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
             }
 
-            // Fallback input while PlayerInput actions are not configured on the prefab.
-            if (ShouldUseDirectInputFallback())
-            {
-                if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
-                    FireCurrentWeapon();
-                if (Keyboard.current.digit1Key.wasPressedThisFrame) SwitchToPreviousWeapon();
-                if (Keyboard.current.digit2Key.wasPressedThisFrame) SwitchToNextWeapon();
-            }
+            if (Keyboard.current.digit1Key.wasPressedThisFrame) SwitchToPreviousWeapon();
+            if (Keyboard.current.digit2Key.wasPressedThisFrame) SwitchToNextWeapon();
+        }
+
+        if (Mouse.current != null && Mouse.current.leftButton.isPressed)
+        {
+            FireCurrentWeapon();
         }
 
         bool sprintHeld = Keyboard.current != null &&
@@ -255,11 +253,6 @@ public class PlayerMovement : NetworkBehaviour
     {
         if (!IsSpawned) return true;
         return IsOwner;
-    }
-
-    private bool ShouldUseDirectInputFallback()
-    {
-        return playerInput == null || playerInput.actions == null;
     }
 
     private void ResetGroundSnapWindow()

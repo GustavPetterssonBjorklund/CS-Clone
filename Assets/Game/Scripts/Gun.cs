@@ -15,7 +15,7 @@ public class Gun : MonoBehaviour
     [SerializeField] private LayerMask hitMask = ~0;
     [SerializeField, Range(0f, 5f)] private float spreadAngle = 0.15f;
     [SerializeField] private bool ignoreTriggerColliders = true;
-    [SerializeField] private bool debugShots;
+    [SerializeField] private bool debugShots = true;
 
     [Header("References")]
     public Camera fpsCam;
@@ -31,6 +31,7 @@ public class Gun : MonoBehaviour
     private float nextTimeToFire;
     private GameObject runtimeLineRendererObject;
     private Material runtimeLineMaterial;
+    private const float TracerStartOffset = 0.05f;
 
     // Internal line state
     private Vector3 lineStart;
@@ -43,6 +44,11 @@ public class Gun : MonoBehaviour
         {
             if (Time.time < nextTimeToFire) return false;
             nextTimeToFire = Time.time + (1f / fireRate);
+        }
+
+        if (debugShots)
+        {
+            Debug.Log($"Gun: TriggerAttack on '{name}' at time={Time.time:F3}");
         }
 
         Shoot();
@@ -111,6 +117,9 @@ public class Gun : MonoBehaviour
             lineRenderer.positionCount = 2;
             lineRenderer.useWorldSpace = true;
             lineRenderer.numCapVertices = 2;
+            lineRenderer.alignment = LineAlignment.View;
+            lineRenderer.shadowCastingMode = ShadowCastingMode.Off;
+            lineRenderer.receiveShadows = false;
             lineRenderer.enabled = false;
         }
     }
@@ -174,11 +183,13 @@ public class Gun : MonoBehaviour
         if (debugShots)
         {
             Debug.DrawRay(rayOrigin, rayDirection * range, Color.red, 1f);
+            Debug.Log($"Gun: Shoot origin={rayOrigin} direction={rayDirection} range={range}");
         }
 
-        // Set up the LineRenderer positions and timer so the line is visible in Game view
-        lineStart = rayOrigin;
-        lineEnd = rayOrigin + rayDirection * range;
+        // Keep hit detection camera-accurate, but start the visible tracer in front of the camera
+        // so it is not clipped by the near plane in Game view.
+        lineStart = GetTracerStart(rayOrigin, rayDirection);
+        lineEnd = lineStart + rayDirection * range;
         lineEndTime = Time.time + lineDuration;
 
         if (lineRenderer != null)
@@ -188,7 +199,7 @@ public class Gun : MonoBehaviour
             lineRenderer.enabled = true;
         }
 
-        if (Physics.Raycast(rayOrigin, rayDirection, out RaycastHit hit, range, hitMask, triggerInteraction))
+        if (TryGetHit(rayOrigin, rayDirection, range, hitMask, triggerInteraction, out RaycastHit hit))
         {
             Target target = hit.transform.GetComponentInParent<Target>();
             if (target != null)
@@ -203,6 +214,70 @@ public class Gun : MonoBehaviour
             lineEnd = hit.point;
             if (lineRenderer != null) lineRenderer.SetPosition(1, lineEnd);
         }
+        else if (debugShots)
+        {
+            Debug.Log("Gun: Shot missed.");
+        }
+    }
+
+    private Vector3 GetTracerStart(Vector3 rayOrigin, Vector3 rayDirection)
+    {
+        if (muzzleFlash != null)
+        {
+            return muzzleFlash.transform.position;
+        }
+
+        if (fpsCam != null)
+        {
+            float nearClipOffset = Mathf.Max(TracerStartOffset, fpsCam.nearClipPlane + TracerStartOffset);
+            return rayOrigin + (rayDirection * nearClipOffset);
+        }
+
+        return transform.position;
+    }
+
+    private bool TryGetHit(
+        Vector3 rayOrigin,
+        Vector3 rayDirection,
+        float maxDistance,
+        LayerMask mask,
+        QueryTriggerInteraction triggerInteraction,
+        out RaycastHit resolvedHit)
+    {
+        RaycastHit[] hits = Physics.RaycastAll(
+            rayOrigin,
+            rayDirection,
+            maxDistance,
+            mask,
+            triggerInteraction);
+
+        if (hits == null || hits.Length == 0)
+        {
+            resolvedHit = default;
+            return false;
+        }
+
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+        for (int i = 0; i < hits.Length; i++)
+        {
+            RaycastHit candidate = hits[i];
+            if (IsSelfHit(candidate.collider)) continue;
+
+            resolvedHit = candidate;
+            return true;
+        }
+
+        resolvedHit = default;
+        return false;
+    }
+
+    private bool IsSelfHit(Collider collider)
+    {
+        if (collider == null) return false;
+
+        Transform hitTransform = collider.transform;
+        Transform shooterRoot = transform.root;
+        return hitTransform == shooterRoot || hitTransform.IsChildOf(shooterRoot);
     }
 
     public void ApplyDefinition(WeaponDefinition weaponDefinition)
