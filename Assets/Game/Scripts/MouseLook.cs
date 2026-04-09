@@ -2,14 +2,25 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using Unity.Netcode;
 
+[DisallowMultipleComponent]
 public class MouseLook : NetworkBehaviour
 {
-    public float mouseSensitivity = 200f;
-    public Transform cameraPivot; // assign CameraPivot
+    private const bool LockCursorOnSpawn = true;
+
+    [SerializeField] private float mouseSensitivity = 200f;
+    [SerializeField] private Transform cameraPivot;
     [SerializeField] private float minPitch = -60f;
     [SerializeField] private float maxPitch = 50f;
 
-    float xRotation = 0f;
+    private float xRotation;
+
+    private void Awake()
+    {
+        if (cameraPivot == null)
+        {
+            cameraPivot = transform.Find("CameraPivot");
+        }
+    }
 
     public override void OnNetworkSpawn()
     {
@@ -19,11 +30,21 @@ public class MouseLook : NetworkBehaviour
             return;
         }
 
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
+        if (cameraPivot == null)
+        {
+            Debug.LogWarning("MouseLook: cameraPivot is not assigned.");
+            enabled = false;
+            return;
+        }
+
+        if (LockCursorOnSpawn)
+        {
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
+        }
     }
 
-    void Update()
+    private void Update()
     {
         if (Mouse.current == null) return;
 

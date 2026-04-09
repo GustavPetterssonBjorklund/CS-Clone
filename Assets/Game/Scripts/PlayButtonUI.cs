@@ -10,6 +10,7 @@ using UnityEngine.SceneManagement;
 public class PlayButtonUI : MonoBehaviour
 {
     private const string DefaultServerAddress = "pettersson.online";
+    private const string DefaultLocalAddress = "127.0.0.1";
 
     [SerializeField] private UIDocument uiDocument;
     [SerializeField] private bool overrideServerAddress;
@@ -76,21 +77,12 @@ public class PlayButtonUI : MonoBehaviour
 
     private void OnDestroy()
     {
-        StopConnectTimeout();
+        ResetConnectionProgress();
         SceneManager.sceneLoaded -= OnSceneLoaded;
         if (playButton != null) playButton.clicked -= OnPlayClicked;
         if (cancelButton != null) cancelButton.clicked -= OnCancelClicked;
         if (playNowButton != null) playNowButton.clicked -= OnPlayNowClicked;
-
-        if (callbacksBound && nm != null)
-        {
-            nm.OnClientConnectedCallback -= OnClientConnected;
-            nm.OnClientDisconnectCallback -= OnClientDisconnected;
-            if (nm.SceneManager != null)
-            {
-                nm.SceneManager.OnSceneEvent -= OnNetworkSceneEvent;
-            }
-        }
+        UnbindCallbacks();
     }
 
     private void SetStateReady(string status = "Ready")
@@ -141,8 +133,7 @@ public class PlayButtonUI : MonoBehaviour
     {
         nm ??= NetworkManager.Singleton;
         BindCallbacksIfNeeded();
-        localClientConnected = false;
-        matchSceneLoaded = false;
+        ResetConnectionProgress();
         originSceneName = SceneManager.GetActiveScene().name;
         LogFlow($"Play clicked from '{originSceneName}'.");
         if (nm == null)
@@ -201,6 +192,7 @@ public class PlayButtonUI : MonoBehaviour
     private void OnCancelClicked()
     {
         nm ??= NetworkManager.Singleton;
+        ResetConnectionProgress();
         if (nm != null && nm.IsListening)
         {
             nm.Shutdown();
@@ -263,6 +255,20 @@ public class PlayButtonUI : MonoBehaviour
         callbacksBound = true;
     }
 
+    private void UnbindCallbacks()
+    {
+        if (!callbacksBound || nm == null) return;
+
+        nm.OnClientConnectedCallback -= OnClientConnected;
+        nm.OnClientDisconnectCallback -= OnClientDisconnected;
+        if (nm.SceneManager != null)
+        {
+            nm.SceneManager.OnSceneEvent -= OnNetworkSceneEvent;
+        }
+
+        callbacksBound = false;
+    }
+
     private void SetStatus(string text)
     {
         if (statusLabel != null)
@@ -300,6 +306,14 @@ public class PlayButtonUI : MonoBehaviour
         connectTimeoutRoutine = null;
     }
 
+    private void ResetConnectionProgress()
+    {
+        localClientConnected = false;
+        matchSceneLoaded = false;
+        originSceneName = string.Empty;
+        StopConnectTimeout();
+    }
+
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
         LogFlow(
@@ -322,28 +336,16 @@ public class PlayButtonUI : MonoBehaviour
 
     private string GetConfiguredAddress()
     {
-        string candidateAddress;
-        if (overrideServerAddress)
-        {
-            if (!string.Equals(serverAddress, DefaultServerAddress, System.StringComparison.Ordinal))
-            {
-                LogFlow($"Overriding serialized server address '{serverAddress}' with '{DefaultServerAddress}'.");
-                serverAddress = DefaultServerAddress;
-            }
-
-            candidateAddress = DefaultServerAddress;
-        }
-        else
-        {
-            candidateAddress = string.IsNullOrWhiteSpace(serverAddress) ? "127.0.0.1" : serverAddress.Trim();
-        }
+        string candidateAddress = overrideServerAddress
+            ? (string.IsNullOrWhiteSpace(serverAddress) ? DefaultServerAddress : serverAddress.Trim())
+            : (string.IsNullOrWhiteSpace(serverAddress) ? DefaultLocalAddress : serverAddress.Trim());
 
         return ResolvePreferredClientAddress(candidateAddress);
     }
 
     private string ResolvePreferredClientAddress(string address)
     {
-        if (string.IsNullOrWhiteSpace(address)) return "127.0.0.1";
+        if (string.IsNullOrWhiteSpace(address)) return DefaultLocalAddress;
         if (IPAddress.TryParse(address, out _)) return address;
 
         try

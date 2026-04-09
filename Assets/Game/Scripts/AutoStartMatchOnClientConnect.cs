@@ -28,6 +28,9 @@ public class AutoStartMatchOnClientConnect : MonoBehaviour
 
     private void OnDisable()
     {
+        CancelInvoke(nameof(LoadMatchScene));
+        loadQueued = false;
+
         if (nm != null)
         {
             nm.OnClientConnectedCallback -= OnClientConnected;
@@ -51,6 +54,12 @@ public class AutoStartMatchOnClientConnect : MonoBehaviour
     {
         if (nm == null || !nm.IsServer) return;
         if (SceneManager.GetActiveScene().name == gameSceneName) return;
+        if (nm.SceneManager == null)
+        {
+            loadQueued = false;
+            Debug.LogWarning("AutoStartMatchOnClientConnect: NetworkSceneManager is unavailable.");
+            return;
+        }
 
         var status = nm.SceneManager.LoadScene(gameSceneName, LoadSceneMode.Single);
         if (status != SceneEventProgressStatus.Started)

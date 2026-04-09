@@ -15,6 +15,7 @@ public class MatchEventHud : MonoBehaviour
 
     private readonly Queue<UiMessage> messages = new();
     private NetworkManager networkManager;
+    private CustomMessagingManager registeredMessagingManager;
 
     private struct UiMessage
     {
@@ -35,10 +36,7 @@ public class MatchEventHud : MonoBehaviour
 
     private void OnDisable()
     {
-        if (networkManager?.CustomMessagingManager != null)
-        {
-            networkManager.CustomMessagingManager.UnregisterNamedMessageHandler(MessageChannel);
-        }
+        UnregisterHandler();
     }
 
     private void Update()
@@ -92,10 +90,20 @@ public class MatchEventHud : MonoBehaviour
 
     private void TryRegisterHandler()
     {
-        if (networkManager == null || networkManager.CustomMessagingManager == null) return;
+        CustomMessagingManager customMessagingManager = networkManager?.CustomMessagingManager;
+        if (customMessagingManager == null || registeredMessagingManager == customMessagingManager) return;
 
-        networkManager.CustomMessagingManager.UnregisterNamedMessageHandler(MessageChannel);
-        networkManager.CustomMessagingManager.RegisterNamedMessageHandler(MessageChannel, OnNamedMessage);
+        UnregisterHandler();
+        customMessagingManager.RegisterNamedMessageHandler(MessageChannel, OnNamedMessage);
+        registeredMessagingManager = customMessagingManager;
+    }
+
+    private void UnregisterHandler()
+    {
+        if (registeredMessagingManager == null) return;
+
+        registeredMessagingManager.UnregisterNamedMessageHandler(MessageChannel);
+        registeredMessagingManager = null;
     }
 
     private void OnGUI()

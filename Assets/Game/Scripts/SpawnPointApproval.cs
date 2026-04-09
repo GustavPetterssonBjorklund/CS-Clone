@@ -1,5 +1,8 @@
 using Unity.Netcode;
 using UnityEngine;
+
+[RequireComponent(typeof(NetworkManager))]
+[DisallowMultipleComponent]
 public class SpawnPointApproval : MonoBehaviour
 {
     [SerializeField] private Transform[] spawnPoints;
@@ -14,6 +17,13 @@ public class SpawnPointApproval : MonoBehaviour
     private void Awake()
     {
         nm = GetComponent<NetworkManager>();
+        if (nm == null)
+        {
+            Debug.LogWarning("SpawnPointApproval: NetworkManager not found.");
+            enabled = false;
+            return;
+        }
+
         nm.ConnectionApprovalCallback = ApprovalCheck;
     }
 

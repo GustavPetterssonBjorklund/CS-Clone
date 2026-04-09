@@ -18,6 +18,7 @@ public class MatchSceneEnemySpawner : MonoBehaviour
     private bool spawnedForCurrentMatch;
     private bool loggedWaitingState;
     private bool loggedNonTargetScene;
+    private bool missingNetworkObjectLogged;
 
     private void Awake()
     {
@@ -127,36 +128,22 @@ public class MatchSceneEnemySpawner : MonoBehaviour
             Debug.Log($"MatchSceneEnemySpawner: spawning {enemyCount} enemies for scene '{activeSceneName}'.");
         }
         matchEventHud?.BroadcastFromServer($"Server: spawning {enemyCount} enemies in {activeSceneName}.");
+        EnemySpawnUtility.SpawnSummary spawnSummary = EnemySpawnUtility.SpawnEnemyRing(
+            enemyPrefab,
+            enemyCount,
+            spawnCenter,
+            spawnRadius,
+            spawnHeightOffset,
+            "MatchSceneEnemySpawner",
+            verboseLogs);
 
-        for (int i = 0; i < enemyCount; i++)
+        if (spawnSummary.MissingNetworkObject && !missingNetworkObjectLogged)
         {
-            float angle = (Mathf.PI * 2f * i) / enemyCount;
-            Vector3 offset = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * spawnRadius;
-            Vector3 spawnPosition = spawnCenter + offset + (Vector3.up * spawnHeightOffset);
-            Quaternion spawnRotation = offset.sqrMagnitude > 0.001f
-                ? Quaternion.LookRotation(-offset.normalized, Vector3.up)
-                : Quaternion.identity;
-
-            GameObject enemyInstance = Instantiate(enemyPrefab, spawnPosition, spawnRotation);
-            enemyInstance.name = $"Enemy_{i + 1:00}";
-
-            NetworkObject networkObject = enemyInstance.GetComponent<NetworkObject>();
-            if (networkObject == null)
-            {
-                Debug.LogWarning("MatchSceneEnemySpawner: enemy prefab missing NetworkObject.");
-                matchEventHud?.BroadcastFromServer("Server: enemy prefab missing NetworkObject.");
-                Destroy(enemyInstance);
-                continue;
-            }
-
-            networkObject.Spawn(true);
-
-            if (verboseLogs)
-            {
-                Debug.Log($"MatchSceneEnemySpawner: spawned '{enemyInstance.name}' at {spawnPosition}.");
-            }
+            matchEventHud?.BroadcastFromServer("Server: enemy prefab missing NetworkObject.");
+            missingNetworkObjectLogged = true;
         }
 
-        matchEventHud?.BroadcastFromServer($"Server: finished enemy spawn for {activeSceneName}.");
+        matchEventHud?.BroadcastFromServer(
+            $"Server: finished enemy spawn for {activeSceneName} ({spawnSummary.SpawnedCount}/{spawnSummary.RequestedCount}).");
     }
 }

@@ -59,30 +59,14 @@ public class NetworkEnemySpawner : MonoBehaviour
             Debug.Log($"NetworkEnemySpawner: spawning {enemyCount} enemies in scene '{gameObject.scene.name}'.");
         }
 
-        for (int i = 0; i < enemyCount; i++)
-        {
-            float angle = (Mathf.PI * 2f * i) / enemyCount;
-            Vector3 offset = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * spawnRadius;
-            Vector3 spawnPosition = transform.position + offset;
-            spawnPosition.y += spawnHeightOffset;
-
-            GameObject enemyInstance = Instantiate(enemyPrefab, spawnPosition, Quaternion.LookRotation(-offset.normalized, Vector3.up));
-            enemyInstance.name = $"Enemy_{i + 1:00}";
-
-            NetworkObject networkObject = enemyInstance.GetComponent<NetworkObject>();
-            if (networkObject == null)
-            {
-                Debug.LogWarning("NetworkEnemySpawner: Enemy prefab is missing a NetworkObject component.");
-                Destroy(enemyInstance);
-                continue;
-            }
-
-            networkObject.Spawn(true);
-            if (verboseLogs)
-            {
-                Debug.Log($"NetworkEnemySpawner: spawned '{enemyInstance.name}' at {spawnPosition}.");
-            }
-        }
+        EnemySpawnUtility.SpawnEnemyRing(
+            enemyPrefab,
+            enemyCount,
+            transform.position,
+            spawnRadius,
+            spawnHeightOffset,
+            "NetworkEnemySpawner",
+            verboseLogs);
     }
 
     private void OnServerStarted()

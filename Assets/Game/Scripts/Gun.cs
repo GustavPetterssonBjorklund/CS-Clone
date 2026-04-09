@@ -28,12 +28,14 @@ public class Gun : MonoBehaviour
     public float lineWidth = 0.02f;
     public float lineDuration = 1f; // seconds the line stays visible
 
-    float nextTimeToFire;
+    private float nextTimeToFire;
+    private GameObject runtimeLineRendererObject;
+    private Material runtimeLineMaterial;
 
     // Internal line state
-    Vector3 _lineStart;
-    Vector3 _lineEnd;
-    float _lineEndTime;
+    private Vector3 lineStart;
+    private Vector3 lineEnd;
+    private float lineEndTime;
 
     public bool TriggerAttack()
     {
@@ -55,7 +57,7 @@ public class Gun : MonoBehaviour
     }
 
 
-    void Start()
+    private void Start()
     {
         if (IsHeadlessRuntime())
         {
@@ -77,9 +79,10 @@ public class Gun : MonoBehaviour
         // Ensure there's a LineRenderer to use. If one isn't assigned, create a child object.
         if (lineRenderer == null)
         {
-            var go = new GameObject("Gun_LineRenderer");
+            GameObject go = new("Gun_LineRenderer");
             go.transform.SetParent(transform, false);
             lineRenderer = go.AddComponent<LineRenderer>();
+            runtimeLineRendererObject = go;
 
             // Configure a simple material if none supplied
             if (lineMaterial != null)
@@ -94,11 +97,13 @@ public class Gun : MonoBehaviour
                     Debug.LogWarning("Gun: Shader 'Sprites/Default' not found. Disabling tracer visuals.");
                     Destroy(go);
                     lineRenderer = null;
+                    runtimeLineRendererObject = null;
                     return;
                 }
 
-                lineRenderer.material = new Material(shader);
-                lineRenderer.material.color = Color.red;
+                runtimeLineMaterial = new Material(shader);
+                runtimeLineMaterial.color = Color.red;
+                lineRenderer.material = runtimeLineMaterial;
             }
 
             lineRenderer.startWidth = lineWidth;
@@ -110,16 +115,37 @@ public class Gun : MonoBehaviour
         }
     }
 
-    void Update()
+    private void OnDisable()
+    {
+        if (lineRenderer != null)
+        {
+            lineRenderer.enabled = false;
+        }
+    }
+
+    private void OnDestroy()
+    {
+        if (runtimeLineMaterial != null)
+        {
+            Destroy(runtimeLineMaterial);
+        }
+
+        if (runtimeLineRendererObject != null)
+        {
+            Destroy(runtimeLineRendererObject);
+        }
+    }
+
+    private void Update()
     {
         // Toggle visibility based on timer
         if (lineRenderer != null)
         {
-            if (Time.time < _lineEndTime)
+            if (Time.time < lineEndTime)
             {
                 if (!lineRenderer.enabled) lineRenderer.enabled = true;
-                lineRenderer.SetPosition(0, _lineStart);
-                lineRenderer.SetPosition(1, _lineEnd);
+                lineRenderer.SetPosition(0, lineStart);
+                lineRenderer.SetPosition(1, lineEnd);
             }
             else
             {
@@ -128,7 +154,7 @@ public class Gun : MonoBehaviour
         }
     }
 
-    void Shoot()
+    private void Shoot()
     {
         if (muzzleFlash) muzzleFlash.Play();
         if (gunSound) gunSound.Play();
@@ -151,14 +177,14 @@ public class Gun : MonoBehaviour
         }
 
         // Set up the LineRenderer positions and timer so the line is visible in Game view
-        _lineStart = rayOrigin;
-        _lineEnd = rayOrigin + rayDirection * range;
-        _lineEndTime = Time.time + lineDuration;
+        lineStart = rayOrigin;
+        lineEnd = rayOrigin + rayDirection * range;
+        lineEndTime = Time.time + lineDuration;
 
         if (lineRenderer != null)
         {
-            lineRenderer.SetPosition(0, _lineStart);
-            lineRenderer.SetPosition(1, _lineEnd);
+            lineRenderer.SetPosition(0, lineStart);
+            lineRenderer.SetPosition(1, lineEnd);
             lineRenderer.enabled = true;
         }
 
@@ -174,8 +200,8 @@ public class Gun : MonoBehaviour
                 }
             }
 
-            _lineEnd = hit.point;
-            if (lineRenderer != null) lineRenderer.SetPosition(1, _lineEnd);
+            lineEnd = hit.point;
+            if (lineRenderer != null) lineRenderer.SetPosition(1, lineEnd);
         }
     }
 
@@ -209,4 +235,3 @@ public class Gun : MonoBehaviour
         return spread * direction.normalized;
     }
 }
-
