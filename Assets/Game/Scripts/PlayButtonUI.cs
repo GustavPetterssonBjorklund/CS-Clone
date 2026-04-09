@@ -7,9 +7,11 @@ using UnityEngine.SceneManagement;
 
 public class PlayButtonUI : MonoBehaviour
 {
+    private const string DefaultServerAddress = "pettersson.online";
+
     [SerializeField] private UIDocument uiDocument;
     [SerializeField] private bool overrideServerAddress;
-    [SerializeField] private string serverAddress = "127.0.0.1";
+    [SerializeField] private string serverAddress = DefaultServerAddress;
     [SerializeField] private ushort serverPort = 7777;
     [SerializeField, Min(1f)] private float connectTimeoutSeconds = 10f;
     [SerializeField] private bool verboseLogs = true;
@@ -184,7 +186,7 @@ public class PlayButtonUI : MonoBehaviour
 
         if (manager.NetworkConfig.NetworkTransport is UnityTransport utp)
         {
-            string address = string.IsNullOrWhiteSpace(serverAddress) ? "127.0.0.1" : serverAddress.Trim();
+            string address = GetConfiguredAddress();
             utp.SetConnectionData(address, serverPort);
             LogFlow($"Configured UnityTransport to {address}:{serverPort} (override={overrideServerAddress}).");
         }
@@ -317,6 +319,17 @@ public class PlayButtonUI : MonoBehaviour
 
     private string GetConfiguredAddress()
     {
+        if (overrideServerAddress)
+        {
+            if (!string.Equals(serverAddress, DefaultServerAddress, System.StringComparison.Ordinal))
+            {
+                LogFlow($"Overriding serialized server address '{serverAddress}' with '{DefaultServerAddress}'.");
+                serverAddress = DefaultServerAddress;
+            }
+
+            return DefaultServerAddress;
+        }
+
         return string.IsNullOrWhiteSpace(serverAddress) ? "127.0.0.1" : serverAddress.Trim();
     }
 

@@ -189,7 +189,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   uiDocument: {fileID: 406992583}
   overrideServerAddress: 1
-  serverAddress: pettersson.online
+  serverAddress: 62.20.222.28
   serverPort: 7777
   connectTimeoutSeconds: 10
   verboseLogs: 1
@@ -454,7 +454,7 @@ MonoBehaviour:
   m_MaxConnectAttempts: 60
   m_DisconnectTimeoutMS: 30000
   ConnectionData:
-    Address: pettersson.online
+    Address: 217.212.210.200
     Port: 7777
     ServerListenAddress: 0.0.0.0
     ClientBindPort: 0
@@ -481,7 +481,7 @@ MonoBehaviour:
     PlayerPrefab: {fileID: 3930473595691022910, guid: d638e92f613206c4793388d560c8ea5a, type: 3}
     Prefabs:
       NetworkPrefabsLists:
-      - {fileID: 11400000, guid: c92fb884899b0924b8a138a6022cdca3, type: 2}
+      - {fileID: 11400000, guid: de579c29eb8ec274dae123516cf461a4, type: 2}
     TickRate: 30
     ClientConnectionBufferTimeout: 10
     ConnectionApproval: 1

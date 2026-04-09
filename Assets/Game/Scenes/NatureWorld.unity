@@ -894,6 +894,5 @@ SceneRoots:
   m_Roots:
   - {fileID: 1232375651}
   - {fileID: 374857762}
-  - {fileID: 1199583312}
   - {fileID: 481613790}
   - {fileID: 1854628300}
